@@ -108,7 +108,11 @@ class TestCloid:
     def test_generate_cloid(self):
         """Test generating client order ID."""
         cloid = generate_cloid()
-        assert 1 <= cloid <= 2**128 - 1
+        # Check it's a hex string
+        assert cloid.startswith("0x")
+        # Convert and check range
+        cloid_int = int(cloid, 16)
+        assert 1 <= cloid_int <= 2**128 - 1
 
     def test_cloid_to_uint128_none(self):
         """Test converting None cloid."""
@@ -116,17 +120,18 @@ class TestCloid:
 
     def test_cloid_to_uint128_valid(self):
         """Test converting valid cloid."""
-        assert cloid_to_uint128(12345) == 12345
+        assert cloid_to_uint128("12345") == 12345
+        assert cloid_to_uint128("0x3039") == 0x3039  # Test hex string
 
     def test_cloid_to_uint128_negative(self):
         """Test negative cloid raises error."""
         with pytest.raises(ValidationError):
-            cloid_to_uint128(-1)
+            cloid_to_uint128("-1")
 
     def test_cloid_to_uint128_too_large(self):
         """Test cloid exceeding uint128 raises error."""
         with pytest.raises(ValidationError):
-            cloid_to_uint128(2**128)
+            cloid_to_uint128(str(2**128))
 
 
 class TestAddressValidation:

@@ -2,6 +2,7 @@
 
 import random
 from decimal import Decimal
+from web3 import Web3
 
 from .exceptions import ValidationError
 from .types import TIF
@@ -178,7 +179,6 @@ def validate_address(address: str) -> str:
             value=address,
         )
 
-    # Basic hex validation
     try:
         int(address[2:], 16)
     except ValueError:
@@ -186,9 +186,7 @@ def validate_address(address: str) -> str:
             "Address contains invalid hex characters", field="address", value=address
         )
 
-    # For now, just return the address as-is
-    # In production, use web3.py's to_checksum_address
-    return address.lower()
+    return Web3.to_checksum_address(address)
 
 
 def cloid_to_uint128(cloid: str | None) -> int:
@@ -206,10 +204,19 @@ def cloid_to_uint128(cloid: str | None) -> int:
     if cloid is None:
         return 0
 
-    if cloid < 0:
+    # Convert string to int (handle hex strings too)
+    try:
+        if isinstance(cloid, str) and cloid.startswith("0x"):
+            cloid_int = int(cloid, 16)
+        else:
+            cloid_int = int(cloid)
+    except (ValueError, TypeError):
+        raise ValidationError("Cloid must be a valid integer string", field="cloid", value=cloid)
+
+    if cloid_int < 0:
         raise ValidationError("Cloid cannot be negative", field="cloid", value=cloid)
 
-    if cloid > 2**128 - 1:
+    if cloid_int > 2**128 - 1:
         raise ValidationError("Cloid exceeds uint128 maximum", field="cloid", value=cloid)
 
-    return cloid
+    return cloid_int
