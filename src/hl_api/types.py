@@ -57,7 +57,7 @@ class TransferResponse:
     """Response from vault or USD class transfers."""
 
     success: bool
-    amount: int | None = None
+    amount: float | None = None
     transaction_hash: str | None = None
     error: str | None = None
     raw_response: dict | None = None

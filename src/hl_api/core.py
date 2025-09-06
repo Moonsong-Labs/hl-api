@@ -343,7 +343,7 @@ class HLProtocolCore(HLProtocolBase):
             logger.error(f"Failed USD transfer to perp: {e}")
             return TransferResponse(success=False, error=str(e))
 
-    async def usd_class_transfer_to_spot(self, amount: int) -> TransferResponse:
+    async def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
         """Transfer USD from perp to spot."""
         if not await self.is_connected():
             await self.connect()

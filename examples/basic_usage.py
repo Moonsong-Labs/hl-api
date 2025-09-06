@@ -41,7 +41,7 @@ async def example_core_trading():
     cloid = generate_cloid()  # Generate unique client order ID
 
     response = await hl_core.limit_order(
-        asset="FARTCOIN",
+        asset="BTC",
         is_buy=True,
         limit_px=price_uint64,
         sz=size_uint64,
@@ -68,16 +68,6 @@ async def example_core_trading():
     else:
         print(f"Cancel failed: {cancel_response.error}")
 
-    # Transfer USD between perp and spot
-    transfer_amount = price_to_uint64(100)  # $100
-
-    transfer_response = await hl_core.usd_class_transfer_to_spot(amount=transfer_amount)
-
-    if transfer_response.success:
-        print(f"Transferred ${100} to spot account")
-    else:
-        print(f"Transfer failed: {transfer_response.error}")
-
     # Disconnect
     await hl_core.disconnect()
 
@@ -85,7 +75,7 @@ async def example_core_trading():
 async def main():
     """Run examples."""
     print("=" * 50)
-    print("HyperLiquid Unified API Examples")
+    print("HyperLiquid API - Example 01")
     print("=" * 50)
 
     await example_core_trading()
