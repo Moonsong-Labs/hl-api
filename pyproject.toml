@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hyperliquid-unified"
+version = "0.1.0"
+description = "Unified Python API for HyperLiquid Core and EVM"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "timbrinded"}]
+keywords = ["hyperliquid", "defi", "trading", "blockchain", "crypto"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "web3>=6.0.0",
+    "eth-abi>=4.0.0",
+    "typing-extensions>=4.0.0",
+    "hyperliquid-python-sdk>=0.9.0",
+    "pytest>=8.4.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "black>=23.0",
+    "mypy>=1.0",
+    "ruff>=0.1"
+]
+
+[project.urls]
+Homepage = "https://github.com/Moonsong-Labs/hl-api"
+Repository = "https://github.com/Moonsong-Labs/hl-api.git"
+Issues = "https://github.com/Moonsong-Labs/hl-api/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+hyperliquid_unified = ["py.typed"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311', 'py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = ["E", "F", "I", "N", "W"]
+
+[tool.pyrefly]
+python_version = "3.10"
