@@ -54,7 +54,7 @@ indent-style = "space"
 line-ending = "auto"
 
 [lint.isort]
-known-first-party = ["hyperliquid_unified"]
+known-first-party = ["hl_api"]
 
 [lint.pydocstyle]
 convention = "google"

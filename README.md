@@ -27,7 +27,7 @@ uv sync
 
 ```python
 import asyncio
-from hyperliquid_unified import HLProtocolCore, price_to_uint64, size_to_uint64
+from hl_api import HLProtocolCore, price_to_uint64, size_to_uint64
 
 async def main():
     # Initialize Core protocol
@@ -41,7 +41,7 @@ async def main():
     
     # Place a limit order
     response = await hl.limit_order(
-        asset=0,  # BTC-PERP
+        asset="BTC",  # BTC-PERP
         is_buy=True,
         limit_px=price_to_uint64(65000),  # $65,000
         sz=size_to_uint64(0.1),           # 0.1 BTC
@@ -86,21 +86,21 @@ All operations correspond to CoreWriter precompile actions:
 The API handles uint64 conversions internally:
 
 ```python
-from hyperliquid_unified import price_to_uint64, size_to_uint64
+from hl_api import price_to_uint64, size_to_uint64
 
 # Convert human-readable values to uint64
 price = price_to_uint64(65000)     # $65,000 -> uint64
 size = size_to_uint64(0.1)         # 0.1 BTC -> uint64
 
 # Generate client order IDs
-from hyperliquid_unified import generate_cloid
+from hl_api import generate_cloid
 cloid = generate_cloid()  # Random uint128
 ```
 
 ## Error Handling
 
 ```python
-from hyperliquid_unified import (
+from hl_api import (
     HLProtocolError,
     OrderError,
     ValidationError

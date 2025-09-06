@@ -138,4 +138,6 @@ cython_debug/
 
 # OS
 .DS_Store
-Thumbs.db
+Thumbs.db# Never commit real credentials
+.env.local
+.env.production

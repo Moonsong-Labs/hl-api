@@ -4,8 +4,8 @@ from decimal import Decimal
 
 import pytest
 
-from hyperliquid_unified.exceptions import ValidationError
-from hyperliquid_unified.utils import (
+from hl_api.exceptions import ValidationError
+from hl_api.utils import (
     cloid_to_uint128,
     decode_tif,
     encode_tif,

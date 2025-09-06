@@ -1,23 +1,33 @@
 """Basic usage example for HyperLiquid Unified API."""
 
 import asyncio
+import os
+from dotenv import load_dotenv
 
-from hyperliquid_unified import (
+from hl_api import (
     HLProtocolCore,
     generate_cloid,
     price_to_uint64,
     size_to_uint64,
 )
 
+# Load environment variables from .env file
+load_dotenv()
+
 
 async def example_core_trading():
     """Example of trading using HyperLiquid Core SDK."""
 
+    # Get credentials from environment variables
+    private_key = os.getenv("PRIVATE_KEY")
+    if not private_key:
+        raise ValueError("PRIVATE_KEY not found in environment variables")
+
     # Initialize Core protocol
-    # Replace with your actual private key
     hl_core = HLProtocolCore(
-        private_key="YOUR_PRIVATE_KEY_HERE",
+        private_key=private_key,
         testnet=True,  # Use testnet for testing
+        account_address=os.getenv("ACCOUNT_ADDRESS")
     )
 
     # Connect to HyperLiquid
@@ -30,7 +40,7 @@ async def example_core_trading():
     cloid = generate_cloid()  # Generate unique client order ID
 
     response = await hl_core.limit_order(
-        asset=0,  # BTC-PERP (asset index 0)
+        asset="BTC",  # BTC-PERP
         is_buy=True,
         limit_px=price_uint64,
         sz=size_uint64,
@@ -47,7 +57,10 @@ async def example_core_trading():
         print(f"Order failed: {response.error}")
 
     # Cancel the order
-    cancel_response = await hl_core.cancel_order(asset=0, cloid=cloid)
+    # If you have an OID (integer), use it directly:
+    # cancel_response = await hl_core.cancel_order(asset="BTC", order_id=12345)
+    # If you have a CLOID (hex string), use it:
+    cancel_response = await hl_core.cancel_order(asset="BTC", order_id=f"0x{cloid:x}")
 
     if cancel_response.success:
         print("Order cancelled successfully!")
@@ -73,15 +86,6 @@ async def main():
     print("=" * 50)
     print("HyperLiquid Unified API Examples")
     print("=" * 50)
-
-    # Uncomment the example you want to run:
-
-    # await example_core_trading()
-    # await example_evm_trading()
-    # await example_unified_interface()
-
-    print("\nNote: Replace private keys and RPC URLs with actual values to run these examples.")
-
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hyperliquid-unified"
+name = "hl-api"
 version = "0.1.0"
 description = "Unified Python API for HyperLiquid Core and EVM"
 readme = "README.md"
@@ -21,11 +21,13 @@ classifiers = [
 ]
 
 dependencies = [
-    "web3>=6.0.0",
-    "eth-abi>=4.0.0",
-    "typing-extensions>=4.0.0",
-    "hyperliquid-python-sdk>=0.9.0",
-    "pytest>=8.4.2",
+    "hyperliquid-python-sdk>=0.18.0",
+    "python-dotenv>=1.0.1",
+    "eth-account>=0.10.0",
+    "dotenv>=0.9.9",
+    "ruff>=0.12.11",
+    "web3>=7.13.0",
+    "pyrefly>=0.31.0",
 ]
 
 [project.optional-dependencies]
@@ -45,9 +47,6 @@ Issues = "https://github.com/Moonsong-Labs/hl-api/issues"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.package-data]
-hyperliquid_unified = ["py.typed"]
-
 [tool.black]
 line-length = 100
 target-version = ['py310', 'py311', 'py312']
@@ -58,4 +57,15 @@ target-version = "py310"
 select = ["E", "F", "I", "N", "W"]
 
 [tool.pyrefly]
-python_version = "3.10"
+project-includes = ["src","tests"]
+search-path = ["src", "tests"]
+python-version = "3.10.0"
+ignore-missing-imports = [
+    "hyperliquid",
+    "hyperliquid.*",
+    "eth_account",
+    "eth_account.*",
+    "web3",
+    "web3.*",
+    "dotenv",
+]

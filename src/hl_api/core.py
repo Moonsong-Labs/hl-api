@@ -1,12 +1,17 @@
 """HyperLiquid Core implementation using the official SDK."""
 
-import logging
+from __future__ import annotations
 
-from eth_account import Account
+import logging
+from typing import Any
+
+import eth_account
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
+from hyperliquid.utils.types import Cloid
 
 from .base import HLProtocolBase
+from .constants import get_asset_index
 from .exceptions import (
     AuthenticationError,
     NetworkError,
@@ -32,7 +37,13 @@ class HLProtocolCore(HLProtocolBase):
     official hyperliquid-python-sdk.
     """
 
-    def __init__(self, private_key: str, testnet: bool = False, base_url: str | None = None):
+    def __init__(
+        self,
+        private_key: str,
+        testnet: bool = False,
+        base_url: str | None = None,
+        account_address: str | None = None,
+    ):
         """Initialize HyperLiquid Core protocol.
 
         Args:
@@ -43,29 +54,28 @@ class HLProtocolCore(HLProtocolBase):
         self.private_key = private_key
         self.testnet = testnet
         self.base_url = base_url
-
-        # Initialize SDK components
         self._exchange: Exchange | None = None
         self._info: Info | None = None
         self._connected = False
 
-        # Derive address from private key
         try:
-            account = Account.from_key(private_key)
-            self.address = account.address
+            account = eth_account.Account.from_key(private_key)  # type: ignore[attr-defined]
+            self.account_address = account_address if account_address else account.address
         except Exception as e:
             raise AuthenticationError(f"Invalid private key: {e}")
 
     async def connect(self) -> None:
         """Establish connection to HyperLiquid Core."""
         try:
-            # Create wallet from private key
-            wallet = Account.from_key(self.private_key)
+            wallet = eth_account.Account.from_key(self.private_key)  # type: ignore[attr-defined]
 
-            # Initialize the Exchange and Info clients
-            self._exchange = Exchange(wallet=wallet, base_url=self.base_url)
+            self._exchange = Exchange(
+                wallet=wallet,
+                base_url=self.base_url,
+                account_address=self.account_address,
+            )
 
-            self._info = Info(base_url=self.base_url)
+            self._info = Info(base_url=self.base_url, skip_ws=True)
 
             self._connected = True
             logger.info(f"Connected to HyperLiquid {'testnet' if self.testnet else 'mainnet'}")
@@ -87,7 +97,7 @@ class HLProtocolCore(HLProtocolBase):
 
     async def limit_order(
         self,
-        asset: int,
+        asset: str,
         is_buy: bool,
         limit_px: int,
         sz: int,
@@ -100,12 +110,11 @@ class HLProtocolCore(HLProtocolBase):
             await self.connect()
 
         try:
-            # Convert parameters to SDK format
-            # Note: SDK expects different format than our uint64 representation
-            # This is a simplified implementation - production would need proper conversion
+            # Convert asset symbol to index
+            asset_index = get_asset_index(asset)
 
-            order_request = {
-                "coin": asset,  # Asset index to coin symbol mapping needed
+            order_request: dict[str, Any] = {
+                "coin": asset_index,
                 "is_buy": is_buy,
                 "sz": sz / 1e8,  # Convert from uint64 to float
                 "limit_px": limit_px / 1e8,  # Convert from uint64 to float
@@ -117,6 +126,9 @@ class HLProtocolCore(HLProtocolBase):
                 order_request["cloid"] = str(cloid)
 
             # Place order via SDK
+            assert self._exchange is not None, (
+                "Exchange client unexpectedly None after connection check"
+            )
             result = self._exchange.order(**order_request)
 
             return OrderResponse(
@@ -134,24 +146,92 @@ class HLProtocolCore(HLProtocolBase):
             logger.error(f"Failed to place limit order: {e}")
             return OrderResponse(success=False, cloid=cloid, error=str(e))
 
-    async def cancel_order(self, asset: int, cloid: int) -> CancelResponse:
-        """Cancel an order by cloid."""
+    async def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
+        """Cancel an order by OID.
+
+        Args:
+            asset: Asset symbol (e.g., "BTC", "ETH")
+            order_id: OID (int)
+        """
         if not await self.is_connected():
             await self.connect()
 
         try:
-            # Cancel order via SDK - needs name and oid
-            # Note: SDK uses (name, oid) not (asset, cloid) for cancellation
-            # This is a limitation - we'd need to track oid from order placement
-            # For now, return error
+            assert self._info is not None and self._exchange is not None, (
+                "Client unexpectedly None after connection check"
+            )
+
+            # Convert asset symbol to index, then to coin name for SDK
+            asset_index = get_asset_index(asset)
+            coin_name = str(asset_index)  # SDK expects string representation
+
+            # Direct OID cancellation
+            result = self._exchange.cancel(coin_name, order_id)
             return CancelResponse(
-                success=False,
-                error="Cancel by cloid not supported in SDK - requires oid",
+                success=True,
+                cancelled_orders=1,
+                raw_response=result,
             )
 
         except Exception as e:
-            logger.error(f"Failed to cancel order: {e}")
+            logger.error(f"Failed to cancel order by OID: {e}")
             return CancelResponse(success=False, error=str(e))
+
+    async def cancel_order_by_cloid(self, asset: str, cloid: str) -> CancelResponse:
+        """Cancel an order by CLOID.
+
+        Args:
+            asset: Asset symbol (e.g., "BTC", "ETH")
+            cloid: CLOID (hex string starting with 0x)
+        """
+        if not await self.is_connected():
+            await self.connect()
+
+        try:
+            assert self._info is not None and self._exchange is not None, (
+                "Client unexpectedly None after connection check"
+            )
+
+            # Convert asset symbol to index, then to coin name for SDK
+            asset_index = get_asset_index(asset)
+            coin_name = str(asset_index)  # SDK expects string representation
+
+            if not cloid.startswith("0x"):
+                return CancelResponse(
+                    success=False,
+                    error=f"Invalid CLOID format: must start with 0x, got {cloid}",
+                )
+
+            # CLOID cancellation - SDK expects Cloid type which is a string
+            cloid_obj = Cloid(cloid)
+            result = self._exchange.cancel_by_cloid(coin_name, cloid_obj)
+            return CancelResponse(
+                success=True,
+                cancelled_orders=1,
+                raw_response=result,
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to cancel order by CLOID: {e}")
+            return CancelResponse(success=False, error=str(e))
+
+    # Backward compatibility - single method that dispatches
+    async def cancel_order(self, asset: str, order_id: int | str) -> CancelResponse:
+        """Cancel an order by OID or CLOID.
+
+        Args:
+            asset: Asset symbol (e.g., "BTC", "ETH")
+            order_id: Either an OID (int) or CLOID (hex string starting with 0x)
+        """
+        if isinstance(order_id, int):
+            return await self.cancel_order_by_oid(asset, order_id)
+        elif isinstance(order_id, str):
+            return await self.cancel_order_by_cloid(asset, order_id)
+        else:
+            return CancelResponse(
+                success=False,
+                error=f"Invalid order_id type: must be int (OID) or str (CLOID), got {type(order_id).__name__}",
+            )
 
     async def vault_transfer(self, vault: str, is_deposit: bool, usd: int) -> TransferResponse:
         """Transfer funds to/from vault."""
@@ -160,6 +240,9 @@ class HLProtocolCore(HLProtocolBase):
 
         try:
             # Transfer to/from vault
+            assert self._exchange is not None, (
+                "Exchange client unexpectedly None after connection check"
+            )
             result = self._exchange.vault_usd_transfer(
                 vault_address=vault,
                 is_deposit=is_deposit,
@@ -176,22 +259,18 @@ class HLProtocolCore(HLProtocolBase):
         self, validator: str, wei: int, is_undelegate: bool = False
     ) -> DelegateResponse:
         """Delegate or undelegate tokens."""
-        # Token delegation not directly supported in SDK
-        # Would need custom implementation
         return DelegateResponse(
             success=False, error="Token delegation not yet implemented for Core SDK"
         )
 
     async def staking_deposit(self, wei: int) -> StakingResponse:
         """Deposit tokens for staking."""
-        # Staking not directly supported in current SDK
         return StakingResponse(
             success=False, error="Staking deposit not yet implemented for Core SDK"
         )
 
     async def staking_withdraw(self, wei: int) -> StakingResponse:
         """Withdraw staked tokens."""
-        # Staking not directly supported in current SDK
         return StakingResponse(
             success=False, error="Staking withdrawal not yet implemented for Core SDK"
         )
@@ -204,9 +283,9 @@ class HLProtocolCore(HLProtocolBase):
             await self.connect()
 
         try:
-            # Send spot tokens via SDK
-            # Note: send_asset requires source_dex and destination_dex
-            # We'll use "perp" as default for both as it's the main dex
+            assert self._exchange is not None, (
+                "Exchange client unexpectedly None after connection check"
+            )
             result = self._exchange.send_asset(
                 destination=recipient,
                 source_dex="perp",
@@ -229,11 +308,12 @@ class HLProtocolCore(HLProtocolBase):
             await self.connect()
 
         try:
-            # Send perp collateral via SDK - using usd_transfer
+            assert self._exchange is not None, (
+                "Exchange client unexpectedly None after connection check"
+            )
             result = self._exchange.usd_transfer(
                 destination=recipient,
                 amount=amount / 1e8,  # Convert from uint64
-                # Note: destination chain parameter not directly supported
             )
 
             return SendResponse(
@@ -251,6 +331,9 @@ class HLProtocolCore(HLProtocolBase):
 
         try:
             # USD class transfer via SDK
+            assert self._exchange is not None, (
+                "Exchange client unexpectedly None after connection check"
+            )
             result = self._exchange.usd_class_transfer(
                 amount=amount / 1e8,  # Convert from uint64
                 to_perp=True,
@@ -269,6 +352,9 @@ class HLProtocolCore(HLProtocolBase):
 
         try:
             # USD class transfer via SDK
+            assert self._exchange is not None, (
+                "Exchange client unexpectedly None after connection check"
+            )
             result = self._exchange.usd_class_transfer(
                 amount=amount / 1e8,  # Convert from uint64
                 to_perp=False,
@@ -294,6 +380,9 @@ class HLProtocolCore(HLProtocolBase):
 
         try:
             # Approve builder fee via SDK
+            assert self._exchange is not None, (
+                "Exchange client unexpectedly None after connection check"
+            )
             result = self._exchange.approve_builder_fee(
                 builder=builder,
                 max_fee_rate=str(fee / 1e8),  # SDK expects string for fee rate

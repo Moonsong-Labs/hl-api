@@ -6,7 +6,6 @@ from .types import (
     ApprovalResponse,
     CancelResponse,
     DelegateResponse,
-    FinalizeResponse,
     OrderResponse,
     SendResponse,
     StakingResponse,
@@ -24,7 +23,7 @@ class HLProtocolBase(ABC):
     @abstractmethod
     async def limit_order(
         self,
-        asset: int,
+        asset: str,
         is_buy: bool,
         limit_px: int,
         sz: int,
@@ -35,7 +34,7 @@ class HLProtocolBase(ABC):
         """Place a limit order (CoreWriter Action ID 1).
 
         Args:
-            asset: Asset index (e.g., 0 for BTC-PERP)
+            asset: Asset symbol (e.g., "BTC", "ETH")
             is_buy: True for buy order, False for sell
             limit_px: Limit price as uint64
             sz: Order size as uint64
@@ -158,12 +157,12 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def cancel_order(self, asset: int, cloid: int) -> CancelResponse:
-        """Cancel an order by cloid (CoreWriter Action ID 10).
+    async def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
+        """Cancel an order by OID (CoreWriter Action ID 10).
 
         Args:
-            asset: Asset index
-            cloid: Client order ID to cancel
+            asset: Asset symbol (e.g., "BTC", "ETH")
+            order_id: OID (int)
 
         Returns:
             CancelResponse with cancellation details or error
@@ -171,14 +170,15 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def finalize_subaccount(self, subaccount: str) -> FinalizeResponse:
-        """Finalize a subaccount (CoreWriter Action ID 11).
+    async def cancel_order_by_cloid(self, asset: str, cloid: str) -> CancelResponse:
+        """Cancel an order by CLOID (CoreWriter Action ID 11).
 
         Args:
-            subaccount: Subaccount address to finalize
+            asset: Asset symbol (e.g., "BTC", "ETH")
+            client_order_id: CLOID (hex string starting with 0x)
 
         Returns:
-            FinalizeResponse with finalization details or error
+            CancelResponse with cancellation details or error
         """
         pass
 

@@ -2,14 +2,9 @@
 
 import logging
 from typing import Any
-
-from eth_abi.packed import encode_packed as encode_abi_packed
 from web3 import Web3
-
 from .base import HLProtocolBase
-from .exceptions import (
-    NetworkError,
-)
+from .constants import get_asset_index
 from .types import (
     ActionID,
     ApprovalResponse,
@@ -100,7 +95,7 @@ class HLProtocolEVM(HLProtocolBase):
 
     async def limit_order(
         self,
-        asset: int,
+        asset: str,
         is_buy: bool,
         limit_px: int,
         sz: int,
@@ -111,9 +106,13 @@ class HLProtocolEVM(HLProtocolBase):
         """Place a limit order via CoreWriter precompile."""
         raise NotImplementedError("EVM limit_order not yet implemented")
 
-    async def cancel_order(self, asset: int, cloid: int) -> CancelResponse:
-        """Cancel an order via CoreWriter precompile."""
-        raise NotImplementedError("EVM cancel_order not yet implemented")
+    async def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
+        """Cancel an order by OID via CoreWriter precompile."""
+        raise NotImplementedError("EVM cancel_order_by_oid not yet implemented")
+
+    async def cancel_order_by_cloid(self, asset: str, cloid: str) -> CancelResponse:
+        """Cancel an order by CLOID via CoreWriter precompile."""
+        raise NotImplementedError("EVM cancel_order_by_cloid not yet implemented")
 
     async def vault_transfer(self, vault: str, is_deposit: bool, usd: int) -> TransferResponse:
         """Transfer funds to/from vault via CoreWriter precompile."""
