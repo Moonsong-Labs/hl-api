@@ -101,7 +101,7 @@ class HLProtocolEVM(HLProtocolBase):
         sz: int,
         reduce_only: bool = False,
         tif: str = "GTC",
-        cloid: int | None = None,
+        cloid: str | None = None,
     ) -> OrderResponse:
         """Place a limit order via CoreWriter precompile."""
         raise NotImplementedError("EVM limit_order not yet implemented")

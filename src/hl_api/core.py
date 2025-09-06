@@ -11,7 +11,6 @@ from hyperliquid.info import Info
 from hyperliquid.utils.types import Cloid
 
 from .base import HLProtocolBase
-from .constants import get_asset_index
 from .exceptions import (
     AuthenticationError,
     NetworkError,
@@ -40,7 +39,7 @@ class HLProtocolCore(HLProtocolBase):
     def __init__(
         self,
         private_key: str,
-        testnet: bool = False,
+        testnet: bool = True,
         base_url: str | None = None,
         account_address: str | None = None,
     ):
@@ -67,15 +66,22 @@ class HLProtocolCore(HLProtocolBase):
     async def connect(self) -> None:
         """Establish connection to HyperLiquid Core."""
         try:
+            from hyperliquid.utils.constants import MAINNET_API_URL, TESTNET_API_URL
+
             wallet = eth_account.Account.from_key(self.private_key)  # type: ignore[attr-defined]
+
+            # Use testnet URL if testnet is True, otherwise use mainnet or custom URL
+            api_url = self.base_url
+            if api_url is None:
+                api_url = TESTNET_API_URL if self.testnet else MAINNET_API_URL
 
             self._exchange = Exchange(
                 wallet=wallet,
-                base_url=self.base_url,
+                base_url=api_url,
                 account_address=self.account_address,
             )
 
-            self._info = Info(base_url=self.base_url, skip_ws=True)
+            self._info = Info(base_url=api_url, skip_ws=True)
 
             self._connected = True
             logger.info(f"Connected to HyperLiquid {'testnet' if self.testnet else 'mainnet'}")
@@ -103,34 +109,34 @@ class HLProtocolCore(HLProtocolBase):
         sz: int,
         reduce_only: bool = False,
         tif: str = "GTC",
-        cloid: int | None = None,
+        cloid: str | None = None,
     ) -> OrderResponse:
         """Place a limit order via HyperLiquid SDK."""
         if not await self.is_connected():
             await self.connect()
 
         try:
-            # Convert asset symbol to index
-            asset_index = get_asset_index(asset)
-
+            # SDK's order method expects 'name' parameter (not 'coin')
             order_request: dict[str, Any] = {
-                "coin": asset_index,
+                "name": asset,  # SDK takes 'name' parameter
                 "is_buy": is_buy,
                 "sz": sz / 1e8,  # Convert from uint64 to float
                 "limit_px": limit_px / 1e8,  # Convert from uint64 to float
-                "order_type": {"limit": {"tif": tif.lower()}},
+                "order_type": {
+                    "limit": {"tif": tif.capitalize()}
+                },  # TIF should be capitalized (e.g., "Gtc")
                 "reduce_only": reduce_only,
             }
 
             if cloid:
-                order_request["cloid"] = str(cloid)
+                # Convert string cloid to Cloid object
+                order_request["cloid"] = Cloid.from_str(cloid)
 
-            # Place order via SDK
             assert self._exchange is not None, (
                 "Exchange client unexpectedly None after connection check"
             )
-            result = self._exchange.order(**order_request)
 
+            result = self._exchange.order(**order_request)
             return OrderResponse(
                 success=True,
                 order_id=result.get("response", {})
@@ -161,12 +167,8 @@ class HLProtocolCore(HLProtocolBase):
                 "Client unexpectedly None after connection check"
             )
 
-            # Convert asset symbol to index, then to coin name for SDK
-            asset_index = get_asset_index(asset)
-            coin_name = str(asset_index)  # SDK expects string representation
-
-            # Direct OID cancellation
-            result = self._exchange.cancel(coin_name, order_id)
+            # SDK expects the asset name directly (e.g., "BTC", "ETH")
+            result = self._exchange.cancel(asset, order_id)
             return CancelResponse(
                 success=True,
                 cancelled_orders=1,
@@ -192,19 +194,15 @@ class HLProtocolCore(HLProtocolBase):
                 "Client unexpectedly None after connection check"
             )
 
-            # Convert asset symbol to index, then to coin name for SDK
-            asset_index = get_asset_index(asset)
-            coin_name = str(asset_index)  # SDK expects string representation
-
             if not cloid.startswith("0x"):
                 return CancelResponse(
                     success=False,
                     error=f"Invalid CLOID format: must start with 0x, got {cloid}",
                 )
 
-            # CLOID cancellation - SDK expects Cloid type which is a string
+            # CLOID cancellation - SDK expects Cloid type and asset name directly
             cloid_obj = Cloid(cloid)
-            result = self._exchange.cancel_by_cloid(coin_name, cloid_obj)
+            result = self._exchange.cancel_by_cloid(asset, cloid_obj)
             return CancelResponse(
                 success=True,
                 cancelled_orders=1,

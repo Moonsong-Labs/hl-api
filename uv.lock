@@ -718,22 +718,6 @@ wheels = [
 ]
 
 [[package]]
-name = "hyperliquid-python-sdk"
-version = "0.18.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "eth-account" },
-    { name = "eth-utils" },
-    { name = "msgpack" },
-    { name = "requests" },
-    { name = "websocket-client" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/50/cd/33becc4335b344707c66d69a17efaf7a230c2ffdc39ba6694577816d0e93/hyperliquid_python_sdk-0.18.0.tar.gz", hash = "sha256:5ca4fe52eabd380c61100859fff852ad92eb84d927947f465a4912d72f3adfe8", size = 23767, upload-time = "2025-08-12T18:43:21.389Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/17/d256e82459700bbcc612bf03921df31b2ffe9f8fda8edb442c5119b5dceb/hyperliquid_python_sdk-0.18.0-py3-none-any.whl", hash = "sha256:c687ebe4b6dd3f2dabbe45261fc13803f65920942a211fc8cedf8dffc92f4f1c", size = 23134, upload-time = "2025-08-12T18:43:20.385Z" },
-]
-
-[[package]]
 name = "hl-api"
 version = "0.1.0"
 source = { editable = "." }
@@ -742,6 +726,7 @@ dependencies = [
     { name = "eth-account" },
     { name = "hyperliquid-python-sdk" },
     { name = "pyrefly" },
+    { name = "pytest" },
     { name = "python-dotenv" },
     { name = "ruff" },
     { name = "web3" },
@@ -764,6 +749,7 @@ requires-dist = [
     { name = "hyperliquid-python-sdk", specifier = ">=0.18.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0" },
     { name = "pyrefly", specifier = ">=0.31.0" },
+    { name = "pytest", specifier = ">=8.4.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
@@ -772,6 +758,22 @@ requires-dist = [
     { name = "web3", specifier = ">=7.13.0" },
 ]
 provides-extras = ["dev"]
+
+[[package]]
+name = "hyperliquid-python-sdk"
+version = "0.18.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "eth-account" },
+    { name = "eth-utils" },
+    { name = "msgpack" },
+    { name = "requests" },
+    { name = "websocket-client" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/50/cd/33becc4335b344707c66d69a17efaf7a230c2ffdc39ba6694577816d0e93/hyperliquid_python_sdk-0.18.0.tar.gz", hash = "sha256:5ca4fe52eabd380c61100859fff852ad92eb84d927947f465a4912d72f3adfe8", size = 23767, upload-time = "2025-08-12T18:43:21.389Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c7/17/d256e82459700bbcc612bf03921df31b2ffe9f8fda8edb442c5119b5dceb/hyperliquid_python_sdk-0.18.0-py3-none-any.whl", hash = "sha256:c687ebe4b6dd3f2dabbe45261fc13803f65920942a211fc8cedf8dffc92f4f1c", size = 23134, upload-time = "2025-08-12T18:43:20.385Z" },
+]
 
 [[package]]
 name = "idna"

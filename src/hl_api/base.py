@@ -29,7 +29,7 @@ class HLProtocolBase(ABC):
         sz: int,
         reduce_only: bool = False,
         tif: str = "GTC",
-        cloid: int | None = None,
+        cloid: str | None = None,
     ) -> OrderResponse:
         """Place a limit order (CoreWriter Action ID 1).
 

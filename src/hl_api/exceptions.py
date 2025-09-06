@@ -25,7 +25,7 @@ class OrderError(HLProtocolError):
         self,
         message: str,
         order_id: str | None = None,
-        cloid: int | None = None,
+        cloid: str | None = None,
         details: dict | None = None,
     ):
         super().__init__(message, details)

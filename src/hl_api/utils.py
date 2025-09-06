@@ -141,15 +141,16 @@ def decode_tif(tif_encoded: int) -> str:
         )
 
 
-def generate_cloid() -> int:
-    """Generate a random client order ID.
+def generate_cloid() -> str:
+    """Generate a random client order ID as hex string.
 
     Returns:
-        Random cloid as uint128
+        Random cloid as hex string (0x prefixed) for uint128
     """
     # Generate a random 128-bit integer
     # Using 16 bytes (128 bits) of randomness
-    return random.randint(1, 2**128 - 1)
+    cloid_int = random.randint(1, 2**128 - 1)
+    return f"0x{cloid_int:032x}"
 
 
 def validate_address(address: str) -> str:
@@ -190,7 +191,7 @@ def validate_address(address: str) -> str:
     return address.lower()
 
 
-def cloid_to_uint128(cloid: int | None) -> int:
+def cloid_to_uint128(cloid: str | None) -> int:
     """Convert cloid to uint128, handling None.
 
     Args:

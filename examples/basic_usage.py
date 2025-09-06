@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+
 from dotenv import load_dotenv
 
 from hl_api import (
@@ -27,25 +28,25 @@ async def example_core_trading():
     hl_core = HLProtocolCore(
         private_key=private_key,
         testnet=True,  # Use testnet for testing
-        account_address=os.getenv("ACCOUNT_ADDRESS")
+        account_address=os.getenv("ACCOUNT_ADDRESS"),
     )
 
     # Connect to HyperLiquid
     await hl_core.connect()
 
     # Place a limit order
-    # Example: Buy 0.1 BTC at $65,000
-    price_uint64 = price_to_uint64(65000)  # Convert price to uint64
-    size_uint64 = size_to_uint64(0.1)  # Convert size to uint64
+    # Example: Buy 0.001 BTC at $60,000
+    price_uint64 = price_to_uint64(60000)  # Convert price to uint64
+    size_uint64 = size_to_uint64(0.001)  # Convert size to uint64
     cloid = generate_cloid()  # Generate unique client order ID
 
     response = await hl_core.limit_order(
-        asset="BTC",  # BTC-PERP
+        asset="FARTCOIN",
         is_buy=True,
         limit_px=price_uint64,
         sz=size_uint64,
         reduce_only=False,
-        tif="GTC",  # Good Till Cancelled
+        tif="GTC",
         cloid=cloid,
     )
 
@@ -60,7 +61,7 @@ async def example_core_trading():
     # If you have an OID (integer), use it directly:
     # cancel_response = await hl_core.cancel_order(asset="BTC", order_id=12345)
     # If you have a CLOID (hex string), use it:
-    cancel_response = await hl_core.cancel_order(asset="BTC", order_id=f"0x{cloid:x}")
+    cancel_response = await hl_core.cancel_order(asset="BTC", order_id=cloid)
 
     if cancel_response.success:
         print("Order cancelled successfully!")
@@ -86,6 +87,9 @@ async def main():
     print("=" * 50)
     print("HyperLiquid Unified API Examples")
     print("=" * 50)
+
+    await example_core_trading()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

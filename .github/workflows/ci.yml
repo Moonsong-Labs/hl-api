@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  build:
+    name: Build (uv)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup uv and Python
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Sync project dependencies (frozen)
+        run: uv sync --frozen
+      - name: Build package
+        run: uv build
+
+  ruff:
+    name: Ruff Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup uv and Python
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Sync project dependencies (frozen)
+        run: uv sync --frozen
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+  pyrefly:
+    name: Pyrefly Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup uv and Python
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Sync project dependencies (frozen)
+        run: uv sync --frozen
+      - name: Type check
+        run: uv run pyrefly check
+  
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup uv and Python
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Sync project dependencies (frozen)
+        run: uv sync --frozen
+      - name: Run tests
+        run: uv run pytest

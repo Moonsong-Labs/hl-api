@@ -35,7 +35,7 @@ class OrderResponse:
 
     success: bool
     order_id: str | None = None
-    cloid: int | None = None
+    cloid: str | None = None
     transaction_hash: str | None = None
     error: str | None = None
     raw_response: dict | None = None
