@@ -27,7 +27,7 @@ uv sync
 
 ```python
 import asyncio
-from hl_api import HLProtocolCore, price_to_uint64, size_to_uint64
+from hl_api import HLProtocolCore
 
 async def main():
     # Initialize Core protocol
@@ -43,8 +43,8 @@ async def main():
     response = await hl.limit_order(
         asset="BTC",  # BTC-PERP
         is_buy=True,
-        limit_px=price_to_uint64(65000),  # $65,000
-        sz=size_to_uint64(0.1),           # 0.1 BTC
+        limit_px=65000.0,  # $65,000
+        sz=0.1,            # 0.1 BTC
         tif="GTC"
     )
     
@@ -80,22 +80,6 @@ All operations correspond to CoreWriter precompile actions:
 | `cancel_order` | 10 | Cancel order by cloid |
 | `finalize_subaccount` | 11 | Finalize subaccount |
 | `approve_builder_fee` | 12 | Approve builder fee |
-
-## Type Conversions
-
-The API handles uint64 conversions internally:
-
-```python
-from hl_api import price_to_uint64, size_to_uint64
-
-# Convert human-readable values to uint64
-price = price_to_uint64(65000)     # $65,000 -> uint64
-size = size_to_uint64(0.1)         # 0.1 BTC -> uint64
-
-# Generate client order IDs
-from hl_api import generate_cloid
-cloid = generate_cloid()  # Random uint128
-```
 
 ## Error Handling
 

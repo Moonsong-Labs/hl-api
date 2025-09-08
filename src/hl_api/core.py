@@ -105,8 +105,8 @@ class HLProtocolCore(HLProtocolBase):
         self,
         asset: str,
         is_buy: bool,
-        limit_px: int,
-        sz: int,
+        limit_px: float,
+        sz: float,
         reduce_only: bool = False,
         tif: str = "GTC",
         cloid: str | None = None,
@@ -120,8 +120,8 @@ class HLProtocolCore(HLProtocolBase):
             order_request: dict[str, Any] = {
                 "name": asset,  # SDK takes 'name' parameter
                 "is_buy": is_buy,
-                "sz": sz / 1e8,  # Convert from uint64 to float
-                "limit_px": limit_px / 1e8,  # Convert from uint64 to float
+                "sz": sz,
+                "limit_px": limit_px,
                 "order_type": {
                     "limit": {"tif": tif.capitalize()}
                 },  # TIF should be capitalized (e.g., "Gtc")
@@ -137,6 +137,7 @@ class HLProtocolCore(HLProtocolBase):
             )
 
             result = self._exchange.order(**order_request)
+
             return OrderResponse(
                 success=True,
                 order_id=result.get("response", {})
@@ -149,8 +150,11 @@ class HLProtocolCore(HLProtocolBase):
             )
 
         except Exception as e:
-            logger.error(f"Failed to place limit order: {e}")
-            return OrderResponse(success=False, cloid=cloid, error=str(e))
+            error_msg = e
+            if result['status'] == 'err': # Error results return the cause in their response field
+                error_msg = result['response']
+            logger.error(f"Failed to place limit order: {error_msg}")
+            return OrderResponse(success=False, cloid=cloid, error=str(error_msg))
 
     async def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
         """Cancel an order by OID.
@@ -231,7 +235,7 @@ class HLProtocolCore(HLProtocolBase):
                 error=f"Invalid order_id type: must be int (OID) or str (CLOID), got {type(order_id).__name__}",
             )
 
-    async def vault_transfer(self, vault: str, is_deposit: bool, usd: int) -> TransferResponse:
+    async def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> TransferResponse:
         """Transfer funds to/from vault."""
         if not await self.is_connected():
             await self.connect()
@@ -244,7 +248,7 @@ class HLProtocolCore(HLProtocolBase):
             result = self._exchange.vault_usd_transfer(
                 vault_address=vault,
                 is_deposit=is_deposit,
-                usd=int(usd / 1e8),  # Convert from uint64 to int
+                usd=usd,  # Direct float input, no conversion needed
             )
 
             return TransferResponse(success=True, amount=usd, raw_response=result)
@@ -254,27 +258,27 @@ class HLProtocolCore(HLProtocolBase):
             return TransferResponse(success=False, error=str(e))
 
     async def token_delegate(
-        self, validator: str, wei: int, is_undelegate: bool = False
+        self, validator: str, amount: float, is_undelegate: bool = False
     ) -> DelegateResponse:
         """Delegate or undelegate tokens."""
         return DelegateResponse(
             success=False, error="Token delegation not yet implemented for Core SDK"
         )
 
-    async def staking_deposit(self, wei: int) -> StakingResponse:
+    async def staking_deposit(self, amount: float) -> StakingResponse:
         """Deposit tokens for staking."""
         return StakingResponse(
             success=False, error="Staking deposit not yet implemented for Core SDK"
         )
 
-    async def staking_withdraw(self, wei: int) -> StakingResponse:
+    async def staking_withdraw(self, amount: float) -> StakingResponse:
         """Withdraw staked tokens."""
         return StakingResponse(
             success=False, error="Staking withdrawal not yet implemented for Core SDK"
         )
 
     async def spot_send(
-        self, recipient: str, token: str, amount: int, destination: str
+        self, recipient: str, token: str, amount: float, destination: str
     ) -> SendResponse:
         """Send spot tokens."""
         if not await self.is_connected():
@@ -289,7 +293,7 @@ class HLProtocolCore(HLProtocolBase):
                 source_dex="perp",
                 destination_dex="perp",
                 token=token,
-                amount=amount / 1e8,  # Convert from uint64 to float
+                amount=amount,  # Direct float input, no conversion needed
             )
 
             return SendResponse(
@@ -300,7 +304,7 @@ class HLProtocolCore(HLProtocolBase):
             logger.error(f"Failed spot send: {e}")
             return SendResponse(success=False, error=str(e))
 
-    async def perp_send(self, recipient: str, amount: int, destination: str) -> SendResponse:
+    async def perp_send(self, recipient: str, amount: float, destination: str) -> SendResponse:
         """Send perp collateral."""
         if not await self.is_connected():
             await self.connect()
@@ -311,7 +315,7 @@ class HLProtocolCore(HLProtocolBase):
             )
             result = self._exchange.usd_transfer(
                 destination=recipient,
-                amount=amount / 1e8,  # Convert from uint64
+                amount=amount,  # Direct float input, no conversion needed
             )
 
             return SendResponse(
@@ -322,7 +326,7 @@ class HLProtocolCore(HLProtocolBase):
             logger.error(f"Failed perp send: {e}")
             return SendResponse(success=False, error=str(e))
 
-    async def usd_class_transfer_to_perp(self, amount: int) -> TransferResponse:
+    async def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
         """Transfer USD from spot to perp."""
         if not await self.is_connected():
             await self.connect()
@@ -333,7 +337,7 @@ class HLProtocolCore(HLProtocolBase):
                 "Exchange client unexpectedly None after connection check"
             )
             result = self._exchange.usd_class_transfer(
-                amount=amount / 1e8,  # Convert from uint64
+                amount=amount,  # Direct float input, no conversion needed
                 to_perp=True,
             )
 
@@ -354,7 +358,7 @@ class HLProtocolCore(HLProtocolBase):
                 "Exchange client unexpectedly None after connection check"
             )
             result = self._exchange.usd_class_transfer(
-                amount=amount / 1e8,  # Convert from uint64
+                amount=amount,  # Direct float input, no conversion needed
                 to_perp=False,
             )
 
@@ -371,7 +375,7 @@ class HLProtocolCore(HLProtocolBase):
             success=False, error="Subaccount finalization not yet implemented for Core SDK"
         )
 
-    async def approve_builder_fee(self, builder: str, fee: int, nonce: int) -> ApprovalResponse:
+    async def approve_builder_fee(self, builder: str, fee: float, nonce: int) -> ApprovalResponse:
         """Approve builder fee."""
         if not await self.is_connected():
             await self.connect()
@@ -383,7 +387,7 @@ class HLProtocolCore(HLProtocolBase):
             )
             result = self._exchange.approve_builder_fee(
                 builder=builder,
-                max_fee_rate=str(fee / 1e8),  # SDK expects string for fee rate
+                max_fee_rate=str(fee),  # SDK expects string, direct float input
                 # Note: nonce not directly supported in SDK
             )
 

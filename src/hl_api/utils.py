@@ -2,6 +2,7 @@
 
 import random
 from decimal import Decimal
+
 from web3 import Web3
 
 from .exceptions import ValidationError
