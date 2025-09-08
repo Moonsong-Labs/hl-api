@@ -15,6 +15,7 @@ from .exceptions import (
     AuthenticationError,
     NetworkError,
 )
+from .utils import size_to_uint64
 from .types import (
     ApprovalResponse,
     CancelResponse,
@@ -248,7 +249,7 @@ class HLProtocolCore(HLProtocolBase):
             result = self._exchange.vault_usd_transfer(
                 vault_address=vault,
                 is_deposit=is_deposit,
-                usd=usd,  # Direct float input, no conversion needed
+                usd=size_to_uint64(usd,6),  # USDC uses 6 decimals
             )
 
             return TransferResponse(success=True, amount=usd, raw_response=result)
