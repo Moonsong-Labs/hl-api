@@ -2,7 +2,7 @@
 
 This example demonstrates:
 - Transfer USD from perp to spot account
-- Transfer USD from spot to perp account  
+- Transfer USD from spot to perp account
 - Capital management between trading venues
 - Error handling for transfer operations
 """
@@ -37,9 +37,9 @@ async def example_usd_transfers():
 
     # Connect to HyperLiquid
     await hl_core.connect()
-    
-    perp_to_spot_response = await hl_core.usd_class_transfer_to_spot(50.0)
-    
+
+    perp_to_spot_response = await hl_core.usd_class_transfer_to_spot(1.0)
+
     if perp_to_spot_response.success:
         print("✅ Transfer to spot successful!")
         print(f"   Amount: ${perp_to_spot_response.amount}")
@@ -49,8 +49,8 @@ async def example_usd_transfers():
 
     await asyncio.sleep(1)
 
-    spot_to_perp_response = await hl_core.usd_class_transfer_to_perp(100.0)
-    
+    spot_to_perp_response = await hl_core.usd_class_transfer_to_perp(1.0)
+
     if spot_to_perp_response.success:
         print("✅ Transfer to perp successful!")
         print(f"   Amount: ${spot_to_perp_response.amount}")
@@ -74,6 +74,6 @@ async def main():
     print("\n" + "=" * 60)
     print("USD Transfer Examples Completed!")
     print("=" * 60)
-    
+
 if __name__ == "__main__":
     asyncio.run(main())

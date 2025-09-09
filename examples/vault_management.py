@@ -40,7 +40,7 @@ async def example_vault_operations():
 
     # 1. Vault Deposit Example
     print("1. Vault Deposit Example")
-    deposit_amount = 10.0
+    deposit_amount = 5.0
 
     deposit_response = await hl_core.vault_transfer(
         vault=vault_address,

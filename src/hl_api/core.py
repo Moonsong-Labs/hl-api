@@ -15,7 +15,6 @@ from .exceptions import (
     AuthenticationError,
     NetworkError,
 )
-from .utils import size_to_uint64
 from .types import (
     ApprovalResponse,
     CancelResponse,
@@ -26,6 +25,7 @@ from .types import (
     StakingResponse,
     TransferResponse,
 )
+from .utils import size_to_uint64
 
 logger = logging.getLogger(__name__)
 
