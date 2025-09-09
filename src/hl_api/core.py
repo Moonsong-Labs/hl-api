@@ -138,6 +138,8 @@ class HLProtocolCore(HLProtocolBase):
             )
 
             result = self._exchange.order(**order_request)
+            if result['status'] == 'err':
+                logger.error(f"Order request failed: {result['response']}")
 
             return OrderResponse(
                 success=True,
@@ -151,11 +153,8 @@ class HLProtocolCore(HLProtocolBase):
             )
 
         except Exception as e:
-            error_msg = e
-            if result['status'] == 'err': # Error results return the cause in their response field
-                error_msg = result['response']
-            logger.error(f"Failed to place limit order: {error_msg}")
-            return OrderResponse(success=False, cloid=cloid, error=str(error_msg))
+            logger.error(f"Failed to place limit order: {e}")
+            return OrderResponse(success=False, cloid=cloid, error=str(e))
 
     async def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
         """Cancel an order by OID.
