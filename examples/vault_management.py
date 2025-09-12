@@ -43,9 +43,7 @@ async def example_vault_operations():
     deposit_amount = 5.0
 
     deposit_response = await hl_core.vault_transfer(
-        vault=vault_address,
-        is_deposit=True,
-        usd=deposit_amount
+        vault=vault_address, is_deposit=True, usd=deposit_amount
     )
 
     if deposit_response.success:

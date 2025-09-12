@@ -61,7 +61,7 @@ async def example_market_orders():
             is_buy=True,
             sz=0.0001,
             slippage=0.005,  # 0.5% slippage protection
-            cloid=cloid
+            cloid=cloid,
         )
 
         if response.success:
@@ -93,7 +93,7 @@ async def example_market_orders():
             is_buy=False,  # Sell order
             sz=0.00005,
             slippage=0.01,  # 1% slippage protection
-            cloid=sell_cloid
+            cloid=sell_cloid,
         )
 
         if sell_response.success:
@@ -114,7 +114,7 @@ async def example_market_orders():
             asset="BTC",
             size=None,  # Close entire position
             slippage=0.02,  # 2% slippage for position closing
-            cloid=generate_cloid()
+            cloid=generate_cloid(),
         )
 
         if close_response.success:
@@ -131,6 +131,7 @@ async def example_market_orders():
     finally:
         # Always disconnect
         await hl_core.disconnect()
+
 
 async def main():
     """Run market order examples."""

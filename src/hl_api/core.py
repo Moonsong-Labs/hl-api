@@ -138,7 +138,7 @@ class HLProtocolCore(HLProtocolBase):
             )
 
             result = self._exchange.order(**order_request)
-            if result['status'] == 'err':
+            if result["status"] == "err":
                 logger.error(f"Order request failed: {result['response']}")
 
             return OrderResponse(
@@ -248,7 +248,7 @@ class HLProtocolCore(HLProtocolBase):
             result = self._exchange.vault_usd_transfer(
                 vault_address=vault,
                 is_deposit=is_deposit,
-                usd=size_to_uint64(usd,6),  # USDC uses 6 decimals
+                usd=size_to_uint64(usd, 6),  # USDC uses 6 decimals
             )
 
             return TransferResponse(success=True, amount=usd, raw_response=result)
@@ -491,14 +491,10 @@ class HLProtocolCore(HLProtocolBase):
 
             # Use SDK's market_open method
             result = self._exchange.market_open(
-                name=asset,
-                is_buy=is_buy,
-                sz=sz,
-                slippage=slippage,
-                cloid=cloid_obj
+                name=asset, is_buy=is_buy, sz=sz, slippage=slippage, cloid=cloid_obj
             )
 
-            if result.get('status') == 'err':
+            if result.get("status") == "err":
                 logger.error(f"Market order request failed: {result['response']}")
 
             # Extract order info from response
@@ -566,10 +562,10 @@ class HLProtocolCore(HLProtocolBase):
                 coin=asset,
                 sz=size,  # None means close entire position
                 slippage=slippage,
-                cloid=cloid_obj
+                cloid=cloid_obj,
             )
 
-            if result.get('status') == 'err':
+            if result.get("status") == "err":
                 logger.error(f"Market close position request failed: {result['response']}")
 
             return OrderResponse(
@@ -587,4 +583,3 @@ class HLProtocolCore(HLProtocolBase):
             error_msg = str(e)
             logger.error(f"Failed to close position: {error_msg}")
             return OrderResponse(success=False, cloid=cloid, error=error_msg)
-

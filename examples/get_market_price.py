@@ -90,17 +90,12 @@ async def basic_price_fetching():
             btc_eth_ratio = prices["BTC"] / prices["ETH"]
             print(f"BTC/ETH Ratio: {btc_eth_ratio:.2f}")
             print(f"1 BTC = {btc_eth_ratio:.2f} ETH")
-            print(f"1 ETH = {1/btc_eth_ratio:.6f} BTC")
+            print(f"1 ETH = {1 / btc_eth_ratio:.6f} BTC")
 
         # Calculate total portfolio value example
         if prices:
             # Example portfolio holdings
-            portfolio = {
-                "BTC": 0.1,
-                "ETH": 2.0,
-                "ATOM": 100.0,
-                "SOL": 10.0
-            }
+            portfolio = {"BTC": 0.1, "ETH": 2.0, "ATOM": 100.0, "SOL": 10.0}
 
             total_value = 0.0
             print("\nExample Portfolio Value:")
@@ -141,6 +136,7 @@ async def basic_price_fetching():
         # Always disconnect when done
         await hl_core.disconnect()
         logger.info("Disconnected from HyperLiquid")
+
 
 async def main():
     """Run all market price examples."""

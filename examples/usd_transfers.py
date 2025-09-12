@@ -61,6 +61,7 @@ async def example_usd_transfers():
     # Disconnect
     await hl_core.disconnect()
 
+
 async def main():
     """Run USD class transfer examples."""
     print("=" * 60)
@@ -74,6 +75,7 @@ async def main():
     print("\n" + "=" * 60)
     print("USD Transfer Examples Completed!")
     print("=" * 60)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
