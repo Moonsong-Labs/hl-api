@@ -197,22 +197,6 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def get_market_price(self, asset: str) -> float:
-        """Get current market price for an asset.
-
-        Args:
-            asset: Asset symbol (e.g., "BTC", "ETH")
-
-        Returns:
-            Current mid price as float
-
-        Raises:
-            ValueError: If asset not found
-            NetworkError: If price fetch fails
-        """
-        pass
-
-    @abstractmethod
     async def connect(self) -> None:
         """Establish connection to the protocol.
 
