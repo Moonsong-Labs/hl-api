@@ -1,8 +1,4 @@
-"""Market Order Example for HyperLiquid Unified API.
-
-This example demonstrates how to execute native market orders using the
-built-in market_order method with slippage protection.
-"""
+"""Market Order Example for HyperLiquid Unified API."""
 
 import asyncio
 import os

@@ -1,8 +1,4 @@
-"""Market Price Fetching Example for HyperLiquid Unified API.
-
-This example demonstrates how to fetch current market prices for various assets
-using the get_market_price method, including error handling and price monitoring.
-"""
+"""Market Price Fetching Example for HyperLiquid Unified API."""
 
 import asyncio
 import logging
