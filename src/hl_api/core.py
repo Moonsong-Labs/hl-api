@@ -398,9 +398,24 @@ class HLProtocolCore(HLProtocolBase):
         except Exception as e:
             logger.error(f"Failed builder fee approval: {e}")
             return ApprovalResponse(success=False, error=str(e))
-        
+
     async def get_market_price(self, asset: str) -> float:
-        """Get current market price for an asset."""
+        """Get current market price for an asset.
+
+        Args:
+            asset: Asset symbol (e.g., "BTC", "ETH", "ATOM"). Must be a valid
+                   asset available on HyperLiquid.
+
+        Returns:
+            Current mid price as float. The price represents the midpoint between
+            the best bid and ask prices.
+
+        Raises:
+            ValueError: If the asset is not found in market data or if the price
+                       is invalid (≤ 0).
+            NetworkError: If there's a network error while fetching price data
+                         or if the connection to HyperLiquid fails.
+        """
         if not await self.is_connected():
             await self.connect()
 
@@ -428,4 +443,148 @@ class HLProtocolCore(HLProtocolBase):
         except Exception as e:
             logger.error(f"Failed to get market price for {asset}: {e}")
             raise NetworkError(f"Failed to fetch market price: {e}")
+
+    async def market_order(
+        self,
+        asset: str,
+        is_buy: bool,
+        sz: float,
+        slippage: float = 0.05,
+        cloid: str | None = None,
+    ) -> OrderResponse:
+        """Place a market order with built-in slippage protection.
+
+        This method places a market order using the hyperliquid-python-sdk's market_open()
+        function. Market orders execute immediately at the best available price.
+
+        Args:
+            asset: Asset symbol (e.g., "BTC", "ETH", "ATOM"). Must be a valid
+                   perpetual contract available on HyperLiquid.
+            is_buy: Direction of the order. True for buy (long), False for sell (short).
+            sz: Order size as a float. Represents the number of units to trade
+                (e.g., 0.1 for 0.1 BTC).
+            slippage: Maximum acceptable slippage as a decimal (default: 0.05 = 5%).
+                     This protects against excessive price movement during execution.
+                     Must be between 0 and 1.
+            cloid: Optional client order ID as a hex string (e.g., "0x123...").
+                   If provided, allows tracking the order with your own identifier.
+
+        Returns:
+            OrderResponse
+
+        Raises:
+            No exceptions are raised. All errors are captured and returned in the
+            OrderResponse.error field.
+        """
+        if not await self.is_connected():
+            await self.connect()
+
+        try:
+            assert self._exchange is not None, (
+                "Exchange client unexpectedly None after connection check"
+            )
+
+            # Prepare cloid if provided
+            cloid_obj = None
+            if cloid:
+                cloid_obj = Cloid.from_str(cloid)
+
+            # Use SDK's market_open method
+            result = self._exchange.market_open(
+                name=asset,
+                is_buy=is_buy,
+                sz=sz,
+                slippage=slippage,
+                cloid=cloid_obj
+            )
+
+            if result.get('status') == 'err':
+                logger.error(f"Market order request failed: {result['response']}")
+
+            # Extract order info from response
+            return OrderResponse(
+                success=True,
+                order_id=result.get("response", {})
+                .get("data", {})
+                .get("statuses", [{}])[0]
+                .get("resting", {})
+                .get("oid"),
+                cloid=cloid,
+                raw_response=result,
+            )
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Failed to place market order: {error_msg}")
+            return OrderResponse(success=False, cloid=cloid, error=error_msg)
+
+    async def market_close_position(
+        self,
+        asset: str,
+        size: float | None = None,
+        slippage: float = 0.05,
+        cloid: str | None = None,
+    ) -> OrderResponse:
+        """Close a position using a market order with slippage protection.
+
+        It can close either the entire position or a
+        specific amount, executing immediately at the best available market price.
+
+        The position closing order will execute in the opposite direction of the
+        current position.
+
+        Args:
+            asset: Asset symbol (e.g., "BTC", "ETH", "ATOM"). Must match an asset
+                   for which you have an open position.
+            size: Amount to close as a float. If None (default), closes the entire
+                  position. If specified, must be positive and not exceed the
+                  current position size.
+            slippage: Maximum acceptable slippage as a decimal (default: 0.05 = 5%).
+                     This protects against excessive price movement during execution.
+                     Must be between 0 and 1.
+            cloid: Optional client order ID as a hex string (e.g., "0x123...").
+                   If provided, allows tracking the order with your own identifier.
+
+        Returns:
+            OrderResponse
+        """
+        if not await self.is_connected():
+            await self.connect()
+
+        try:
+            assert self._exchange is not None, (
+                "Exchange client unexpectedly None after connection check"
+            )
+
+            # Prepare cloid if provided
+            cloid_obj = None
+            if cloid:
+                cloid_obj = Cloid.from_str(cloid)
+
+            # Use SDK's market_close method
+            result = self._exchange.market_close(
+                coin=asset,
+                sz=size,  # None means close entire position
+                slippage=slippage,
+                cloid=cloid_obj
+            )
+
+            if result.get('status') == 'err':
+                logger.error(f"Market close position request failed: {result['response']}")
+
+            return OrderResponse(
+                success=True,
+                order_id=result.get("response", {})
+                .get("data", {})
+                .get("statuses", [{}])[0]
+                .get("resting", {})
+                .get("oid"),
+                cloid=cloid,
+                raw_response=result,
+            )
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Failed to close position: {error_msg}")
+            return OrderResponse(success=False, cloid=cloid, error=error_msg)
 

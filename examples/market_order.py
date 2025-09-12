@@ -1,7 +1,7 @@
 """Market Order Example for HyperLiquid Unified API.
 
-This example demonstrates how to execute aggressive market orders using IOC (Immediate or Cancel)
-orders with slippage protection and calculation.
+This example demonstrates how to execute native market orders using the
+built-in market_order method with slippage protection.
 """
 
 import asyncio
@@ -9,26 +9,14 @@ import os
 
 from dotenv import load_dotenv
 
-from hl_api import (
-    HLProtocolCore,
-    generate_cloid,
-)
+from hl_api import HLProtocolCore, generate_cloid
 
 # Load environment variables from .env file
 load_dotenv()
 
-def calculate_slippage_price(
-    market_price: float,
-    is_buy: bool,
-    max_slippage_percent: float
-) -> float:
-    if is_buy:
-        return market_price * (100 + max_slippage_percent) / 100
-    else:
-        return market_price * (100 - max_slippage_percent) / 100
 
 async def example_market_orders():
-    """Demonstrate various market order scenarios."""
+    """Demonstrate native market order functionality."""
 
     # Get credentials from environment variables
     private_key = os.getenv("PRIVATE_KEY")
@@ -45,40 +33,104 @@ async def example_market_orders():
     # Connect to HyperLiquid
     await hl_core.connect()
 
-    cloid = generate_cloid()  # Generate unique client order ID
+    try:
+        print("=" * 50)
+        print("Native Market Order Example")
+        print("=" * 50)
 
-    market_price = 125000.0
+        # Get current market price for context
+        try:
+            current_btc_price = await hl_core.get_market_price("BTC")
+            print(f"Current BTC price: ${current_btc_price:,.2f}")
+        except Exception as e:
+            print(f"Could not fetch current price: {e}")
+            current_btc_price = None
 
-    # Calculate the limit price with slippage protection
-    limit_price_with_slippage = calculate_slippage_price(
-        market_price=market_price,
-        is_buy=True,
-        max_slippage_percent=0.5
-    )
+        # Generate unique client order ID
+        cloid = generate_cloid()
 
-    print(f"Market price:        ${market_price}")
-    print(f"Price with slippage: ${limit_price_with_slippage}")
+        # Execute native market order with built-in slippage protection
+        print("\nPlacing native market buy order...")
+        print("- Asset: BTC")
+        print("- Size: 0.0001 BTC")
+        print("- Slippage: 0.5% (0.005)")
+        print(f"- Client Order ID: {cloid}")
 
-    # Execute the aggressive IOC order
-    response = await hl_core.limit_order(
-        asset="BTC",
-        is_buy=True,
-        limit_px=limit_price_with_slippage,
-        sz=0.0001,
-        reduce_only=False,
-        tif="IOC",  # Immediate or Cancel - behaves like a market order with price protection
-        cloid=cloid,
-    )
+        response = await hl_core.market_order(
+            asset="BTC",
+            is_buy=True,
+            sz=0.0001,
+            slippage=0.005,  # 0.5% slippage protection
+            cloid=cloid
+        )
 
-    if response.success:
-        print("Market order placed successfully!")
-        print(f"Order ID: {response.order_id}")
-        print(f"Client Order ID: {response.cloid}")
-    else:
-        print(f"Order failed: {response.error}")
+        if response.success:
+            print("\n✅ Market order placed successfully!")
+            print(f"   Order ID: {response.order_id}")
+            print(f"   Client Order ID: {response.cloid}")
 
-    # Disconnect
-    await hl_core.disconnect()
+            if current_btc_price:
+                order_value = 0.0001 * current_btc_price
+                print(f"   Estimated Order Value: ${order_value:.2f}")
+
+        else:
+            print(f"\n❌ Market order failed: {response.error}")
+
+        # Example 2: Market sell order
+        print("\n" + "-" * 30)
+        print("Market Sell Order Example")
+        print("-" * 30)
+
+        sell_cloid = generate_cloid()
+
+        print("Placing market sell order...")
+        print("- Asset: BTC")
+        print("- Size: 0.00005 BTC (smaller size)")
+        print("- Slippage: 1% (0.01)")
+
+        sell_response = await hl_core.market_order(
+            asset="BTC",
+            is_buy=False,  # Sell order
+            sz=0.00005,
+            slippage=0.01,  # 1% slippage protection
+            cloid=sell_cloid
+        )
+
+        if sell_response.success:
+            print("\n✅ Market sell order placed successfully!")
+            print(f"   Order ID: {sell_response.order_id}")
+            print(f"   Client Order ID: {sell_response.cloid}")
+        else:
+            print(f"\n❌ Market sell order failed: {sell_response.error}")
+
+        # Example 3: Position closing
+        print("\n" + "-" * 30)
+        print("Position Closing Example")
+        print("-" * 30)
+
+        print("Attempting to close BTC position...")
+
+        close_response = await hl_core.market_close_position(
+            asset="BTC",
+            size=None,  # Close entire position
+            slippage=0.02,  # 2% slippage for position closing
+            cloid=generate_cloid()
+        )
+
+        if close_response.success:
+            print("✅ Position close order placed successfully!")
+            print(f"   Order ID: {close_response.order_id}")
+        else:
+            print(f"❌ Position close failed: {close_response.error}")
+
+        print("\n" + "=" * 50)
+
+    except Exception as e:
+        print(f"Error in market order example: {e}")
+
+    finally:
+        # Always disconnect
+        await hl_core.disconnect()
 
 async def main():
     """Run market order examples."""
