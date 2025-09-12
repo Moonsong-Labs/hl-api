@@ -398,3 +398,34 @@ class HLProtocolCore(HLProtocolBase):
         except Exception as e:
             logger.error(f"Failed builder fee approval: {e}")
             return ApprovalResponse(success=False, error=str(e))
+        
+    async def get_market_price(self, asset: str) -> float:
+        """Get current market price for an asset."""
+        if not await self.is_connected():
+            await self.connect()
+
+        try:
+            assert self._info is not None, "Info client unexpectedly None after connection check"
+
+            # Get all mid prices from the SDK
+            all_mids = self._info.all_mids()
+
+            if asset not in all_mids:
+                raise ValueError(f"Asset {asset} not found in market data")
+
+            price = float(all_mids[asset])
+
+            # Validate price
+            if price <= 0:
+                raise ValueError(f"Invalid price {price} for asset {asset}")
+
+            logger.info(f"Retrieved market price for {asset}: ${price:,.2f}")
+            return price
+
+        except ValueError:
+            # Re-raise validation errors as-is
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get market price for {asset}: {e}")
+            raise NetworkError(f"Failed to fetch market price: {e}")
+
