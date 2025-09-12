@@ -92,7 +92,7 @@ class SendResponse:
 
     success: bool
     recipient: str | None = None
-    amount: int | None = None
+    amount: float | None = None
     transaction_hash: str | None = None
     error: str | None = None
     raw_response: dict | None = None
@@ -126,7 +126,7 @@ class ApprovalResponse:
 
     success: bool
     builder: str | None = None
-    fee: int | None = None
+    fee: float | None = None
     nonce: int | None = None
     transaction_hash: str | None = None
     error: str | None = None
