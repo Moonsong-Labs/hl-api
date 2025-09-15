@@ -27,7 +27,7 @@ uv sync
 
 ```python
 import asyncio
-from hl_api import HLProtocolCore, price_to_uint64, size_to_uint64
+from hl_api import HLProtocolCore
 
 async def main():
     # Initialize Core protocol
@@ -43,8 +43,8 @@ async def main():
     response = await hl.limit_order(
         asset="BTC",  # BTC-PERP
         is_buy=True,
-        limit_px=price_to_uint64(65000),  # $65,000
-        sz=size_to_uint64(0.1),           # 0.1 BTC
+        limit_px=65000.0,  # $65,000
+        sz=0.1,            # 0.1 BTC
         tif="GTC"
     )
     
@@ -61,6 +61,54 @@ asyncio.run(main())
 
 > [!IMPORTANT]  
 > This is pending `flexible-vault` & `strategy` contract deployment and is not yet ready for use.
+
+## Testing Setup
+
+### Prerequisites
+
+To test with HyperLiquid Testnet, you need a funded account. The testnet faucet requires at least 0.1 USDC in the same address on mainnet.
+
+### Mainnet Setup (Required for Testnet Access)
+
+1. **Add Networks**: Add both mainnet and testnet to your wallet using [Chainlist](https://chainlist.org/?chain=999&search=hyper&testnets=true)
+
+2. **Fund Arbitrum Account**: Get USDC (≥5) and ETH (≥0.01) on Arbitrum
+
+3. **Enable Trading**: 
+   - Connect to [HyperLiquid mainnet](https://app.hyperliquid.xyz/trade)
+   - Deposit 5 USDC from Arbitrum using "Enable trading"
+
+### Testnet Setup
+
+1. **Access Faucet**: Visit [testnet faucet](https://app.hyperliquid-testnet.xyz/drip)
+2. **Switch Networks**: Connect to HyperEVM Testnet with the same address
+3. **Claim Tokens**: Click "claim mock USDC" to receive 999 USD
+
+### Environment Configuration
+
+Create a `.env` file:
+
+```env
+PRIVATE_KEY=your_private_key_here
+ACCOUNT_ADDRESS=your_account_address
+```
+
+### Run Example
+
+```bash
+uv run examples/basic_usage.py
+```
+
+Expected output:
+```
+==================================================
+HyperLiquid API - Example 01
+==================================================
+Order placed successfully!
+Order ID: 38856319342
+Client Order ID: 0x18edf09f7bf5cf16cf792bf4dc051fca
+Order cancelled successfully!
+```
 
 ## Supported Operations
 
@@ -80,22 +128,6 @@ All operations correspond to CoreWriter precompile actions:
 | `cancel_order` | 10 | Cancel order by cloid |
 | `finalize_subaccount` | 11 | Finalize subaccount |
 | `approve_builder_fee` | 12 | Approve builder fee |
-
-## Type Conversions
-
-The API handles uint64 conversions internally:
-
-```python
-from hl_api import price_to_uint64, size_to_uint64
-
-# Convert human-readable values to uint64
-price = price_to_uint64(65000)     # $65,000 -> uint64
-size = size_to_uint64(0.1)         # 0.1 BTC -> uint64
-
-# Generate client order IDs
-from hl_api import generate_cloid
-cloid = generate_cloid()  # Random uint128
-```
 
 ## Error Handling
 

@@ -8,8 +8,6 @@ from dotenv import load_dotenv
 from hl_api import (
     HLProtocolCore,
     generate_cloid,
-    price_to_uint64,
-    size_to_uint64,
 )
 
 # Load environment variables from .env file
@@ -36,15 +34,13 @@ async def example_core_trading():
 
     # Place a limit order
     # Example: Buy 0.001 BTC at $60,000
-    price_uint64 = price_to_uint64(60000)  # Convert price to uint64
-    size_uint64 = size_to_uint64(0.001)  # Convert size to uint64
     cloid = generate_cloid()  # Generate unique client order ID
 
     response = await hl_core.limit_order(
         asset="BTC",
         is_buy=True,
-        limit_px=price_uint64,
-        sz=size_uint64,
+        limit_px=60000.0,
+        sz=0.001,
         reduce_only=False,
         tif="GTC",
         cloid=cloid,

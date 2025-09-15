@@ -25,8 +25,8 @@ class HLProtocolBase(ABC):
         self,
         asset: str,
         is_buy: bool,
-        limit_px: int,
-        sz: int,
+        limit_px: float,
+        sz: float,
         reduce_only: bool = False,
         tif: str = "GTC",
         cloid: str | None = None,
@@ -36,8 +36,8 @@ class HLProtocolBase(ABC):
         Args:
             asset: Asset symbol (e.g., "BTC", "ETH")
             is_buy: True for buy order, False for sell
-            limit_px: Limit price as uint64
-            sz: Order size as uint64
+            limit_px: Limit price as float (e.g., 65000.0 for $65,000)
+            sz: Order size as float (e.g., 0.1 for 0.1 BTC)
             reduce_only: If True, order can only reduce position
             tif: Time in force - "ALO", "GTC", or "IOC"
             cloid: Client order ID (optional, 0 means no cloid)
@@ -48,13 +48,13 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def vault_transfer(self, vault: str, is_deposit: bool, usd: int) -> TransferResponse:
+    async def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> TransferResponse:
         """Transfer funds to/from vault (CoreWriter Action ID 2).
 
         Args:
             vault: Vault address
             is_deposit: True for deposit, False for withdrawal
-            usd: Amount in USD as uint64
+            usd: Amount in USD as float (e.g., 1000.0 for $1000)
 
         Returns:
             TransferResponse with transfer details or error
@@ -63,13 +63,13 @@ class HLProtocolBase(ABC):
 
     @abstractmethod
     async def token_delegate(
-        self, validator: str, wei: int, is_undelegate: bool = False
+        self, validator: str, amount: float, is_undelegate: bool = False
     ) -> DelegateResponse:
         """Delegate or undelegate tokens (CoreWriter Action ID 3).
 
         Args:
             validator: Validator address
-            wei: Amount in wei as uint64
+            amount: Amount to delegate/undelegate as float
             is_undelegate: True to undelegate, False to delegate
 
         Returns:
@@ -78,11 +78,11 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def staking_deposit(self, wei: int) -> StakingResponse:
+    async def staking_deposit(self, amount: float) -> StakingResponse:
         """Deposit tokens for staking (CoreWriter Action ID 4).
 
         Args:
-            wei: Amount to stake in wei as uint64
+            amount: Amount to stake as float
 
         Returns:
             StakingResponse with staking details or error
@@ -90,11 +90,11 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def staking_withdraw(self, wei: int) -> StakingResponse:
+    async def staking_withdraw(self, amount: float) -> StakingResponse:
         """Withdraw staked tokens (CoreWriter Action ID 5).
 
         Args:
-            wei: Amount to withdraw in wei as uint64
+            amount: Amount to withdraw as float
 
         Returns:
             StakingResponse with withdrawal details or error
@@ -103,14 +103,14 @@ class HLProtocolBase(ABC):
 
     @abstractmethod
     async def spot_send(
-        self, recipient: str, token: str, amount: int, destination: str
+        self, recipient: str, token: str, amount: float, destination: str
     ) -> SendResponse:
         """Send spot tokens (CoreWriter Action ID 6).
 
         Args:
             recipient: Recipient address
             token: Token identifier
-            amount: Amount to send as uint64
+            amount: Amount to send as float
             destination: Destination chain/network
 
         Returns:
@@ -119,12 +119,12 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def perp_send(self, recipient: str, amount: int, destination: str) -> SendResponse:
+    async def perp_send(self, recipient: str, amount: float, destination: str) -> SendResponse:
         """Send perp collateral (CoreWriter Action ID 7).
 
         Args:
             recipient: Recipient address
-            amount: Amount to send as uint64
+            amount: Amount to send as float
             destination: Destination chain/network
 
         Returns:
@@ -133,11 +133,11 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def usd_class_transfer_to_perp(self, amount: int) -> TransferResponse:
+    async def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
         """Transfer USD from spot to perp (CoreWriter Action ID 8).
 
         Args:
-            amount: Amount to transfer as uint64
+            amount: Amount to transfer as float
 
         Returns:
             TransferResponse with transfer details or error
@@ -145,11 +145,11 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def usd_class_transfer_to_spot(self, amount: int) -> TransferResponse:
+    async def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
         """Transfer USD from perp to spot (CoreWriter Action ID 9).
 
         Args:
-            amount: Amount to transfer as uint64
+            amount: Amount to transfer as float
 
         Returns:
             TransferResponse with transfer details or error
@@ -183,12 +183,12 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def approve_builder_fee(self, builder: str, fee: int, nonce: int) -> ApprovalResponse:
+    async def approve_builder_fee(self, builder: str, fee: float, nonce: int) -> ApprovalResponse:
         """Approve builder fee (CoreWriter Action ID 12).
 
         Args:
             builder: Builder address
-            fee: Fee amount as uint64
+            fee: Fee amount as float
             nonce: Nonce for the approval
 
         Returns:

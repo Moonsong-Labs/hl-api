@@ -25,6 +25,7 @@ from .types import (
     StakingResponse,
     TransferResponse,
 )
+from .utils import size_to_uint64
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +106,8 @@ class HLProtocolCore(HLProtocolBase):
         self,
         asset: str,
         is_buy: bool,
-        limit_px: int,
-        sz: int,
+        limit_px: float,
+        sz: float,
         reduce_only: bool = False,
         tif: str = "GTC",
         cloid: str | None = None,
@@ -120,8 +121,8 @@ class HLProtocolCore(HLProtocolBase):
             order_request: dict[str, Any] = {
                 "name": asset,  # SDK takes 'name' parameter
                 "is_buy": is_buy,
-                "sz": sz / 1e8,  # Convert from uint64 to float
-                "limit_px": limit_px / 1e8,  # Convert from uint64 to float
+                "sz": sz,
+                "limit_px": limit_px,
                 "order_type": {
                     "limit": {"tif": tif.capitalize()}
                 },  # TIF should be capitalized (e.g., "Gtc")
@@ -137,6 +138,9 @@ class HLProtocolCore(HLProtocolBase):
             )
 
             result = self._exchange.order(**order_request)
+            if result["status"] == "err":
+                logger.error(f"Order request failed: {result['response']}")
+
             return OrderResponse(
                 success=True,
                 order_id=result.get("response", {})
@@ -231,7 +235,7 @@ class HLProtocolCore(HLProtocolBase):
                 error=f"Invalid order_id type: must be int (OID) or str (CLOID), got {type(order_id).__name__}",
             )
 
-    async def vault_transfer(self, vault: str, is_deposit: bool, usd: int) -> TransferResponse:
+    async def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> TransferResponse:
         """Transfer funds to/from vault."""
         if not await self.is_connected():
             await self.connect()
@@ -244,7 +248,7 @@ class HLProtocolCore(HLProtocolBase):
             result = self._exchange.vault_usd_transfer(
                 vault_address=vault,
                 is_deposit=is_deposit,
-                usd=int(usd / 1e8),  # Convert from uint64 to int
+                usd=size_to_uint64(usd, 6),  # USDC uses 6 decimals
             )
 
             return TransferResponse(success=True, amount=usd, raw_response=result)
@@ -254,27 +258,27 @@ class HLProtocolCore(HLProtocolBase):
             return TransferResponse(success=False, error=str(e))
 
     async def token_delegate(
-        self, validator: str, wei: int, is_undelegate: bool = False
+        self, validator: str, amount: float, is_undelegate: bool = False
     ) -> DelegateResponse:
         """Delegate or undelegate tokens."""
         return DelegateResponse(
             success=False, error="Token delegation not yet implemented for Core SDK"
         )
 
-    async def staking_deposit(self, wei: int) -> StakingResponse:
+    async def staking_deposit(self, amount: float) -> StakingResponse:
         """Deposit tokens for staking."""
         return StakingResponse(
             success=False, error="Staking deposit not yet implemented for Core SDK"
         )
 
-    async def staking_withdraw(self, wei: int) -> StakingResponse:
+    async def staking_withdraw(self, amount: float) -> StakingResponse:
         """Withdraw staked tokens."""
         return StakingResponse(
             success=False, error="Staking withdrawal not yet implemented for Core SDK"
         )
 
     async def spot_send(
-        self, recipient: str, token: str, amount: int, destination: str
+        self, recipient: str, token: str, amount: float, destination: str
     ) -> SendResponse:
         """Send spot tokens."""
         if not await self.is_connected():
@@ -289,7 +293,7 @@ class HLProtocolCore(HLProtocolBase):
                 source_dex="perp",
                 destination_dex="perp",
                 token=token,
-                amount=amount / 1e8,  # Convert from uint64 to float
+                amount=amount,  # Direct float input, no conversion needed
             )
 
             return SendResponse(
@@ -300,7 +304,7 @@ class HLProtocolCore(HLProtocolBase):
             logger.error(f"Failed spot send: {e}")
             return SendResponse(success=False, error=str(e))
 
-    async def perp_send(self, recipient: str, amount: int, destination: str) -> SendResponse:
+    async def perp_send(self, recipient: str, amount: float, destination: str) -> SendResponse:
         """Send perp collateral."""
         if not await self.is_connected():
             await self.connect()
@@ -311,7 +315,7 @@ class HLProtocolCore(HLProtocolBase):
             )
             result = self._exchange.usd_transfer(
                 destination=recipient,
-                amount=amount / 1e8,  # Convert from uint64
+                amount=amount,  # Direct float input, no conversion needed
             )
 
             return SendResponse(
@@ -322,7 +326,7 @@ class HLProtocolCore(HLProtocolBase):
             logger.error(f"Failed perp send: {e}")
             return SendResponse(success=False, error=str(e))
 
-    async def usd_class_transfer_to_perp(self, amount: int) -> TransferResponse:
+    async def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
         """Transfer USD from spot to perp."""
         if not await self.is_connected():
             await self.connect()
@@ -333,7 +337,7 @@ class HLProtocolCore(HLProtocolBase):
                 "Exchange client unexpectedly None after connection check"
             )
             result = self._exchange.usd_class_transfer(
-                amount=amount / 1e8,  # Convert from uint64
+                amount=amount,  # Direct float input, no conversion needed
                 to_perp=True,
             )
 
@@ -354,7 +358,7 @@ class HLProtocolCore(HLProtocolBase):
                 "Exchange client unexpectedly None after connection check"
             )
             result = self._exchange.usd_class_transfer(
-                amount=amount / 1e8,  # Convert from uint64
+                amount=amount,  # Direct float input, no conversion needed
                 to_perp=False,
             )
 
@@ -371,7 +375,7 @@ class HLProtocolCore(HLProtocolBase):
             success=False, error="Subaccount finalization not yet implemented for Core SDK"
         )
 
-    async def approve_builder_fee(self, builder: str, fee: int, nonce: int) -> ApprovalResponse:
+    async def approve_builder_fee(self, builder: str, fee: float, nonce: int) -> ApprovalResponse:
         """Approve builder fee."""
         if not await self.is_connected():
             await self.connect()
@@ -383,7 +387,7 @@ class HLProtocolCore(HLProtocolBase):
             )
             result = self._exchange.approve_builder_fee(
                 builder=builder,
-                max_fee_rate=str(fee / 1e8),  # SDK expects string for fee rate
+                max_fee_rate=str(fee),  # SDK expects string, direct float input
                 # Note: nonce not directly supported in SDK
             )
 
@@ -394,3 +398,188 @@ class HLProtocolCore(HLProtocolBase):
         except Exception as e:
             logger.error(f"Failed builder fee approval: {e}")
             return ApprovalResponse(success=False, error=str(e))
+
+    async def get_market_price(self, asset: str) -> float:
+        """Get current market price for an asset.
+
+        Args:
+            asset: Asset symbol (e.g., "BTC", "ETH", "ATOM"). Must be a valid
+                   asset available on HyperLiquid.
+
+        Returns:
+            Current mid price as float. The price represents the midpoint between
+            the best bid and ask prices.
+
+        Raises:
+            ValueError: If the asset is not found in market data or if the price
+                       is invalid (≤ 0).
+            NetworkError: If there's a network error while fetching price data
+                         or if the connection to HyperLiquid fails.
+        """
+        if not await self.is_connected():
+            await self.connect()
+
+        try:
+            assert self._info is not None, "Info client unexpectedly None after connection check"
+
+            # Get all mid prices from the SDK
+            all_mids = self._info.all_mids()
+
+            if asset not in all_mids:
+                raise ValueError(f"Asset {asset} not found in market data")
+
+            price = float(all_mids[asset])
+
+            # Validate price
+            if price <= 0:
+                raise ValueError(f"Invalid price {price} for asset {asset}")
+
+            logger.info(f"Retrieved market price for {asset}: ${price:,.2f}")
+            return price
+
+        except ValueError:
+            # Re-raise validation errors as-is
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get market price for {asset}: {e}")
+            raise NetworkError(f"Failed to fetch market price: {e}")
+
+    async def market_order(
+        self,
+        asset: str,
+        is_buy: bool,
+        sz: float,
+        slippage: float = 0.05,
+        cloid: str | None = None,
+    ) -> OrderResponse:
+        """Place a market order with built-in slippage protection.
+
+        This method places a market order using the hyperliquid-python-sdk's market_open()
+        function. Market orders execute immediately at the best available price.
+
+        Args:
+            asset: Asset symbol (e.g., "BTC", "ETH", "ATOM"). Must be a valid
+                   perpetual contract available on HyperLiquid.
+            is_buy: Direction of the order. True for buy (long), False for sell (short).
+            sz: Order size as a float. Represents the number of units to trade
+                (e.g., 0.1 for 0.1 BTC).
+            slippage: Maximum acceptable slippage as a decimal (default: 0.05 = 5%).
+                     This protects against excessive price movement during execution.
+                     Must be between 0 and 1.
+            cloid: Optional client order ID as a hex string (e.g., "0x123...").
+                   If provided, allows tracking the order with your own identifier.
+
+        Returns:
+            OrderResponse
+
+        Raises:
+            No exceptions are raised. All errors are captured and returned in the
+            OrderResponse.error field.
+        """
+        if not await self.is_connected():
+            await self.connect()
+
+        try:
+            assert self._exchange is not None, (
+                "Exchange client unexpectedly None after connection check"
+            )
+
+            # Prepare cloid if provided
+            cloid_obj = None
+            if cloid:
+                cloid_obj = Cloid.from_str(cloid)
+
+            # Use SDK's market_open method
+            result = self._exchange.market_open(
+                name=asset, is_buy=is_buy, sz=sz, slippage=slippage, cloid=cloid_obj
+            )
+
+            if result.get("status") == "err":
+                logger.error(f"Market order request failed: {result['response']}")
+
+            # Extract order info from response
+            return OrderResponse(
+                success=True,
+                order_id=result.get("response", {})
+                .get("data", {})
+                .get("statuses", [{}])[0]
+                .get("resting", {})
+                .get("oid"),
+                cloid=cloid,
+                raw_response=result,
+            )
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Failed to place market order: {error_msg}")
+            return OrderResponse(success=False, cloid=cloid, error=error_msg)
+
+    async def market_close_position(
+        self,
+        asset: str,
+        size: float | None = None,
+        slippage: float = 0.05,
+        cloid: str | None = None,
+    ) -> OrderResponse:
+        """Close a position using a market order with slippage protection.
+
+        It can close either the entire position or a
+        specific amount, executing immediately at the best available market price.
+
+        The position closing order will execute in the opposite direction of the
+        current position.
+
+        Args:
+            asset: Asset symbol (e.g., "BTC", "ETH", "ATOM"). Must match an asset
+                   for which you have an open position.
+            size: Amount to close as a float. If None (default), closes the entire
+                  position. If specified, must be positive and not exceed the
+                  current position size.
+            slippage: Maximum acceptable slippage as a decimal (default: 0.05 = 5%).
+                     This protects against excessive price movement during execution.
+                     Must be between 0 and 1.
+            cloid: Optional client order ID as a hex string (e.g., "0x123...").
+                   If provided, allows tracking the order with your own identifier.
+
+        Returns:
+            OrderResponse
+        """
+        if not await self.is_connected():
+            await self.connect()
+
+        try:
+            assert self._exchange is not None, (
+                "Exchange client unexpectedly None after connection check"
+            )
+
+            # Prepare cloid if provided
+            cloid_obj = None
+            if cloid:
+                cloid_obj = Cloid.from_str(cloid)
+
+            # Use SDK's market_close method
+            result = self._exchange.market_close(
+                coin=asset,
+                sz=size,  # None means close entire position
+                slippage=slippage,
+                cloid=cloid_obj,
+            )
+
+            if result.get("status") == "err":
+                logger.error(f"Market close position request failed: {result['response']}")
+
+            return OrderResponse(
+                success=True,
+                order_id=result.get("response", {})
+                .get("data", {})
+                .get("statuses", [{}])[0]
+                .get("resting", {})
+                .get("oid"),
+                cloid=cloid,
+                raw_response=result,
+            )
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Failed to close position: {error_msg}")
+            return OrderResponse(success=False, cloid=cloid, error=error_msg)

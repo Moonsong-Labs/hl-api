@@ -2,9 +2,10 @@
 
 import logging
 from typing import Any
+
 from web3 import Web3
+
 from .base import HLProtocolBase
-from .constants import get_asset_index
 from .types import (
     ActionID,
     ApprovalResponse,
@@ -16,7 +17,7 @@ from .types import (
     StakingResponse,
     TransferResponse,
 )
-from .utils import validate_address
+from .utils import price_to_uint64, size_to_uint64
 
 logger = logging.getLogger(__name__)
 
@@ -97,13 +98,16 @@ class HLProtocolEVM(HLProtocolBase):
         self,
         asset: str,
         is_buy: bool,
-        limit_px: int,
-        sz: int,
+        limit_px: float,
+        sz: float,
         reduce_only: bool = False,
         tif: str = "GTC",
         cloid: str | None = None,
     ) -> OrderResponse:
         """Place a limit order via CoreWriter precompile."""
+        _limit_px_uint64 = price_to_uint64(limit_px)
+        _sz_uint64 = size_to_uint64(sz)
+        # TODO: Implement CoreWriter precompile interaction with uint64 values (_limit_px_uint64, _sz_uint64)
         raise NotImplementedError("EVM limit_order not yet implemented")
 
     async def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
@@ -114,46 +118,64 @@ class HLProtocolEVM(HLProtocolBase):
         """Cancel an order by CLOID via CoreWriter precompile."""
         raise NotImplementedError("EVM cancel_order_by_cloid not yet implemented")
 
-    async def vault_transfer(self, vault: str, is_deposit: bool, usd: int) -> TransferResponse:
+    async def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> TransferResponse:
         """Transfer funds to/from vault via CoreWriter precompile."""
+        _usd_uint64 = size_to_uint64(usd)  # USD amount, use size conversion
+        # TODO: Implement CoreWriter precompile interaction with uint64 value (_usd_uint64)
         raise NotImplementedError("EVM vault_transfer not yet implemented")
 
     async def token_delegate(
-        self, validator: str, wei: int, is_undelegate: bool = False
+        self, validator: str, amount: float, is_undelegate: bool = False
     ) -> DelegateResponse:
         """Delegate tokens via CoreWriter precompile."""
+        _amount_uint64 = size_to_uint64(amount)
+        # TODO: Implement CoreWriter precompile interaction with uint64 value (_amount_uint64)
         raise NotImplementedError("EVM token_delegate not yet implemented")
 
-    async def staking_deposit(self, wei: int) -> StakingResponse:
+    async def staking_deposit(self, amount: float) -> StakingResponse:
         """Deposit for staking via CoreWriter precompile."""
+        _amount_uint64 = size_to_uint64(amount)  # USD amount for staking, use size conversion
+        # TODO: Implement CoreWriter precompile interaction with uint64 value (_amount_uint64)
         raise NotImplementedError("EVM staking_deposit not yet implemented")
 
-    async def staking_withdraw(self, wei: int) -> StakingResponse:
+    async def staking_withdraw(self, amount: float) -> StakingResponse:
         """Withdraw from staking via CoreWriter precompile."""
+        _amount_uint64 = size_to_uint64(amount)  # USD amount for staking, use size conversion
+        # TODO: Implement CoreWriter precompile interaction with uint64 value (_amount_uint64)
         raise NotImplementedError("EVM staking_withdraw not yet implemented")
 
     async def spot_send(
-        self, recipient: str, token: str, amount: int, destination: str
+        self, recipient: str, token: str, amount: float, destination: str
     ) -> SendResponse:
         """Send spot tokens via CoreWriter precompile."""
+        _amount_uint64 = size_to_uint64(amount)
+        # TODO: Implement CoreWriter precompile interaction with uint64 value (_amount_uint64)
         raise NotImplementedError("EVM spot_send not yet implemented")
 
-    async def perp_send(self, recipient: str, amount: int, destination: str) -> SendResponse:
+    async def perp_send(self, recipient: str, amount: float, destination: str) -> SendResponse:
         """Send perp collateral via CoreWriter precompile."""
+        _amount_uint64 = size_to_uint64(amount)  # USD collateral amount, use size conversion
+        # TODO: Implement CoreWriter precompile interaction with uint64 value (_amount_uint64)
         raise NotImplementedError("EVM perp_send not yet implemented")
 
-    async def usd_class_transfer_to_perp(self, amount: int) -> TransferResponse:
+    async def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
         """Transfer USD to perp via CoreWriter precompile."""
+        _amount_uint64 = size_to_uint64(amount)  # USD amount, use size conversion
+        # TODO: Implement CoreWriter precompile interaction with uint64 value (_amount_uint64)
         raise NotImplementedError("EVM usd_class_transfer_to_perp not yet implemented")
 
-    async def usd_class_transfer_to_spot(self, amount: int) -> TransferResponse:
+    async def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
         """Transfer USD to spot via CoreWriter precompile."""
+        _amount_uint64 = size_to_uint64(amount)  # USD amount, use size conversion
+        # TODO: Implement CoreWriter precompile interaction with uint64 value (_amount_uint64)
         raise NotImplementedError("EVM usd_class_transfer_to_spot not yet implemented")
 
     async def finalize_subaccount(self, subaccount: str) -> FinalizeResponse:
         """Finalize subaccount via CoreWriter precompile."""
         raise NotImplementedError("EVM finalize_subaccount not yet implemented")
 
-    async def approve_builder_fee(self, builder: str, fee: int, nonce: int) -> ApprovalResponse:
+    async def approve_builder_fee(self, builder: str, fee: float, nonce: int) -> ApprovalResponse:
         """Approve builder fee via CoreWriter precompile."""
+        _fee_uint64 = size_to_uint64(fee)  # Fee amount, use size conversion
+        # TODO: Implement CoreWriter precompile interaction with uint64 value (_fee_uint64)
         raise NotImplementedError("EVM approve_builder_fee not yet implemented")
