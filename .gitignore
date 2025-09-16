@@ -141,3 +141,7 @@ cython_debug/
 Thumbs.db# Never commit real credentials
 .env.local
 .env.production
+
+# LLM
+AGENTS.md
+CLAUDE.md

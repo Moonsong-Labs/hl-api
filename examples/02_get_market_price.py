@@ -9,30 +9,25 @@ from dotenv import load_dotenv
 from hl_api import HLProtocolCore
 from hl_api.exceptions import NetworkError
 
-# Configure logging to see detailed execution
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load environment variables from .env file
 load_dotenv()
 
 
 async def basic_price_fetching():
     """Demonstrate basic market price fetching."""
 
-    # Get credentials from environment variables
     private_key = os.getenv("PRIVATE_KEY")
     if not private_key:
         raise ValueError("PRIVATE_KEY not found in environment variables")
 
-    # Initialize Core protocol
     hl_core = HLProtocolCore(
         private_key=private_key,
-        testnet=True,  # Use testnet for testing
+        testnet=True,
         account_address=os.getenv("ACCOUNT_ADDRESS"),
     )
 
-    # Connect to HyperLiquid
     await hl_core.connect()
     logger.info("Connected to HyperLiquid testnet")
 
@@ -129,7 +124,6 @@ async def basic_price_fetching():
     except Exception as e:
         logger.error(f"Error in basic price fetching: {e}")
     finally:
-        # Always disconnect when done
         await hl_core.disconnect()
         logger.info("Disconnected from HyperLiquid")
 
@@ -137,10 +131,11 @@ async def basic_price_fetching():
 async def main():
     """Run all market price examples."""
     try:
-        print("🔍 HyperLiquid Market Price Examples")
+        print("=" * 50)
+        print("HyperLiquid API - Example 02")
+        print("🔍 Market Prices")
         print("=" * 60)
 
-        # Run example
         await basic_price_fetching()
 
     except Exception as e:

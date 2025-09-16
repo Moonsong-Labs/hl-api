@@ -7,34 +7,25 @@ from dotenv import load_dotenv
 
 from hl_api import HLProtocolCore, generate_cloid
 
-# Load environment variables from .env file
 load_dotenv()
 
 
 async def example_market_orders():
     """Demonstrate native market order functionality."""
 
-    # Get credentials from environment variables
     private_key = os.getenv("PRIVATE_KEY")
     if not private_key:
         raise ValueError("PRIVATE_KEY not found in environment variables")
 
-    # Initialize Core protocol
     hl_core = HLProtocolCore(
         private_key=private_key,
-        testnet=True,  # Use testnet for testing
+        testnet=True,
         account_address=os.getenv("ACCOUNT_ADDRESS"),
     )
 
-    # Connect to HyperLiquid
     await hl_core.connect()
 
     try:
-        print("=" * 50)
-        print("Native Market Order Example")
-        print("=" * 50)
-
-        # Get current market price for context
         try:
             current_btc_price = await hl_core.get_market_price("BTC")
             print(f"Current BTC price: ${current_btc_price:,.2f}")
@@ -42,7 +33,6 @@ async def example_market_orders():
             print(f"Could not fetch current price: {e}")
             current_btc_price = None
 
-        # Generate unique client order ID
         cloid = generate_cloid()
 
         # Execute native market order with built-in slippage protection
@@ -125,12 +115,17 @@ async def example_market_orders():
         print(f"Error in market order example: {e}")
 
     finally:
-        # Always disconnect
         await hl_core.disconnect()
 
 
 async def main():
     """Run market order examples."""
+
+    print("=" * 50)
+    print("HyperLiquid API - Example 03")
+    print("🏧 Market Orders")
+    print("=" * 60)
+
     try:
         await example_market_orders()
     except Exception as e:

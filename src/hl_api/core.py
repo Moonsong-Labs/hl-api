@@ -117,9 +117,8 @@ class HLProtocolCore(HLProtocolBase):
             await self.connect()
 
         try:
-            # SDK's order method expects 'name' parameter (not 'coin')
             order_request: dict[str, Any] = {
-                "name": asset,  # SDK takes 'name' parameter
+                "name": asset,
                 "is_buy": is_buy,
                 "sz": sz,
                 "limit_px": limit_px,
@@ -130,7 +129,6 @@ class HLProtocolCore(HLProtocolBase):
             }
 
             if cloid:
-                # Convert string cloid to Cloid object
                 order_request["cloid"] = Cloid.from_str(cloid)
 
             assert self._exchange is not None, (
@@ -171,7 +169,6 @@ class HLProtocolCore(HLProtocolBase):
                 "Client unexpectedly None after connection check"
             )
 
-            # SDK expects the asset name directly (e.g., "BTC", "ETH")
             result = self._exchange.cancel(asset, order_id)
             return CancelResponse(
                 success=True,
@@ -293,7 +290,7 @@ class HLProtocolCore(HLProtocolBase):
                 source_dex="perp",
                 destination_dex="perp",
                 token=token,
-                amount=amount,  # Direct float input, no conversion needed
+                amount=amount,
             )
 
             return SendResponse(
@@ -315,7 +312,7 @@ class HLProtocolCore(HLProtocolBase):
             )
             result = self._exchange.usd_transfer(
                 destination=recipient,
-                amount=amount,  # Direct float input, no conversion needed
+                amount=amount,
             )
 
             return SendResponse(
@@ -337,7 +334,7 @@ class HLProtocolCore(HLProtocolBase):
                 "Exchange client unexpectedly None after connection check"
             )
             result = self._exchange.usd_class_transfer(
-                amount=amount,  # Direct float input, no conversion needed
+                amount=amount,
                 to_perp=True,
             )
 
@@ -353,12 +350,13 @@ class HLProtocolCore(HLProtocolBase):
             await self.connect()
 
         try:
-            # USD class transfer via SDK
             assert self._exchange is not None, (
                 "Exchange client unexpectedly None after connection check"
             )
+            print(f"Transferring ${amount} from perp to spot for {self._exchange.account_address}")
+
             result = self._exchange.usd_class_transfer(
-                amount=amount,  # Direct float input, no conversion needed
+                amount=amount,
                 to_perp=False,
             )
 

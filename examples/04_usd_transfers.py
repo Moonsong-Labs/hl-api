@@ -16,29 +16,25 @@ from hl_api import (
     HLProtocolCore,
 )
 
-# Load environment variables from .env file
 load_dotenv()
 
 
 async def example_usd_transfers():
     """Example of USD transfers between spot and perp accounts."""
 
-    # Get credentials from environment variables
     private_key = os.getenv("PRIVATE_KEY")
     if not private_key:
         raise ValueError("PRIVATE_KEY not found in environment variables")
 
-    # Initialize Core protocol
     hl_core = HLProtocolCore(
         private_key=private_key,
-        testnet=True,  # Use testnet for testing
+        testnet=True,
         account_address=os.getenv("ACCOUNT_ADDRESS"),
     )
 
-    # Connect to HyperLiquid
     await hl_core.connect()
 
-    perp_to_spot_response = await hl_core.usd_class_transfer_to_spot(1.0)
+    perp_to_spot_response = await hl_core.usd_class_transfer_to_spot(0.23)
 
     if perp_to_spot_response.success:
         print("✅ Transfer to spot successful!")
@@ -49,7 +45,7 @@ async def example_usd_transfers():
 
     await asyncio.sleep(1)
 
-    spot_to_perp_response = await hl_core.usd_class_transfer_to_perp(1.0)
+    spot_to_perp_response = await hl_core.usd_class_transfer_to_perp(0.2)
 
     if spot_to_perp_response.success:
         print("✅ Transfer to perp successful!")
@@ -64,17 +60,13 @@ async def example_usd_transfers():
 
 async def main():
     """Run USD class transfer examples."""
+
+    print("=" * 50)
+    print("HyperLiquid API - Example 03")
+    print("💸 USD Class Transfers")
     print("=" * 60)
-    print("HyperLiquid API - USD Class Transfers")
-    print("=" * 60)
-    print("💡 View account balances on testnet: https://app.hyperliquid-testnet.xyz/")
-    print()
 
     await example_usd_transfers()
-
-    print("\n" + "=" * 60)
-    print("USD Transfer Examples Completed!")
-    print("=" * 60)
 
 
 if __name__ == "__main__":

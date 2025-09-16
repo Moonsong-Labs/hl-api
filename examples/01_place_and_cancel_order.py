@@ -10,26 +10,22 @@ from hl_api import (
     generate_cloid,
 )
 
-# Load environment variables from .env file
 load_dotenv()
 
 
 async def example_core_trading():
     """Example of trading using HyperLiquid Core SDK."""
 
-    # Get credentials from environment variables
     private_key = os.getenv("PRIVATE_KEY")
     if not private_key:
         raise ValueError("PRIVATE_KEY not found in environment variables")
 
-    # Initialize Core protocol
     hl_core = HLProtocolCore(
         private_key=private_key,
-        testnet=True,  # Use testnet for testing
+        testnet=True,
         account_address=os.getenv("ACCOUNT_ADDRESS"),
     )
 
-    # Connect to HyperLiquid
     await hl_core.connect()
 
     # Place a limit order
@@ -64,7 +60,6 @@ async def example_core_trading():
     else:
         print(f"Cancel failed: {cancel_response.error}")
 
-    # Disconnect
     await hl_core.disconnect()
 
 
@@ -72,6 +67,7 @@ async def main():
     """Run examples."""
     print("=" * 50)
     print("HyperLiquid API - Example 01")
+    print("📈 Place & Cancel Limit Orders")
     print("=" * 50)
 
     await example_core_trading()
