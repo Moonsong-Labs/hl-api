@@ -150,11 +150,63 @@ except HLProtocolError as e:
 
 ## Examples
 
-### Placing Limit Order
+### Place & cancel a limit order
 
-### Canceling Order
+```python
+cloid = generate_cloid()
+hl.limit_order(
+    asset="BTC",
+    is_buy=True,
+    limit_px=60000.0,
+    sz=0.001,
+    tif="GTC",
+    cloid=cloid,
+)
+hl.cancel_order(asset="BTC", order_id=cloid)
+```
 
-### Modifying Order
+Args:
+- `asset` – perp symbol from [trading docs](https://docs.hyperliquid.xyz/core/trading)
+- `is_buy` – `True` to bid, `False` to ask
+- `limit_px` – limit price in USD
+- `sz` – base asset size
+- `tif` – time-in-force (`"GTC"`, `"IOC"`, etc.)
+- `cloid` – optional client order ID reused for cancellation
+
+### Fetch market prices
+
+```python
+price = hl.get_market_price("BTC")
+```
+
+Args:
+- `asset` – symbol to quote; see [market data docs](https://docs.hyperliquid.xyz/core/market-data)
+
+### Submit market & close orders
+
+```python
+cloid = generate_cloid()
+hl.market_order(asset="BTC", is_buy=True, sz=0.0001, slippage=0.005, cloid=cloid)
+hl.market_close_position(asset="BTC", size=None, slippage=0.02, cloid=generate_cloid())
+```
+
+Args:
+- `asset` – perp symbol from [trading docs](https://docs.hyperliquid.xyz/core/trading)
+- `is_buy` – direction flag; ignored for `market_close_position`
+- `sz` – quantity filled immediately at market
+- `slippage` – max price impact (e.g. `0.005` = 0.5%)
+- `cloid` – client order identifier per request
+- `size` – position size to flatten; `None` closes all
+
+### USD class transfers
+
+```python
+hl.usd_class_transfer_to_spot(0.23)
+hl.usd_class_transfer_to_perp(0.2)
+```
+
+Args:
+- `amount` – USD to move between perp and spot vaults; see [portfolio docs](https://docs.hyperliquid.xyz/core/portfolio)
 
 ## Architecture
 
