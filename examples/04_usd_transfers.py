@@ -7,8 +7,8 @@ This example demonstrates:
 - Error handling for transfer operations
 """
 
-import asyncio
 import os
+import time
 
 from dotenv import load_dotenv
 
@@ -19,7 +19,7 @@ from hl_api import (
 load_dotenv()
 
 
-async def example_usd_transfers():
+def example_usd_transfers():
     """Example of USD transfers between spot and perp accounts."""
 
     private_key = os.getenv("PRIVATE_KEY")
@@ -32,9 +32,9 @@ async def example_usd_transfers():
         account_address=os.getenv("ACCOUNT_ADDRESS"),
     )
 
-    await hl_core.connect()
+    hl_core.connect()
 
-    perp_to_spot_response = await hl_core.usd_class_transfer_to_spot(0.23)
+    perp_to_spot_response = hl_core.usd_class_transfer_to_spot(0.23)
 
     if perp_to_spot_response.success:
         print("✅ Transfer to spot successful!")
@@ -43,9 +43,9 @@ async def example_usd_transfers():
     else:
         print(f"❌ Transfer to spot failed: {perp_to_spot_response.error}")
 
-    await asyncio.sleep(1)
+    time.sleep(1)
 
-    spot_to_perp_response = await hl_core.usd_class_transfer_to_perp(0.2)
+    spot_to_perp_response = hl_core.usd_class_transfer_to_perp(0.2)
 
     if spot_to_perp_response.success:
         print("✅ Transfer to perp successful!")
@@ -55,10 +55,10 @@ async def example_usd_transfers():
         print(f"❌ Transfer to perp failed: {spot_to_perp_response.error}")
 
     # Disconnect
-    await hl_core.disconnect()
+    hl_core.disconnect()
 
 
-async def main():
+def main():
     """Run USD class transfer examples."""
 
     print("=" * 50)
@@ -66,8 +66,8 @@ async def main():
     print("💸 USD Class Transfers")
     print("=" * 60)
 
-    await example_usd_transfers()
+    example_usd_transfers()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

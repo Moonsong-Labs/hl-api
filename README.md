@@ -26,35 +26,32 @@ uv sync
 ### Using HyperLiquid Core
 
 ```python
-import asyncio
 from hl_api import HLProtocolCore
 
-async def main():
-    # Initialize Core protocol
-    hl = HLProtocolCore(
-        private_key="YOUR_PRIVATE_KEY",
-        testnet=True  # Use mainnet in production
-    )
-    
+# Initialize Core protocol
+hl = HLProtocolCore(
+    private_key="YOUR_PRIVATE_KEY",
+    testnet=True,  # Use mainnet in production
+)
+
+try:
     # Connect
-    await hl.connect()
-    
+    hl.connect()
+
     # Place a limit order
-    response = await hl.limit_order(
+    response = hl.limit_order(
         asset="BTC",  # BTC-PERP
         is_buy=True,
         limit_px=65000.0,  # $65,000
-        sz=0.1,            # 0.1 BTC
-        tif="GTC"
+        sz=0.1,  # 0.1 BTC
+        tif="GTC",
     )
-    
+
     if response.success:
         print(f"Order placed: {response.order_id}")
-    
+finally:
     # Disconnect
-    await hl.disconnect()
-
-asyncio.run(main())
+    hl.disconnect()
 ```
 
 ### Using HyperLiquid EVM
@@ -96,17 +93,19 @@ ACCOUNT_ADDRESS=your_account_address
 ### Run Example
 
 ```bash
-uv run examples/basic_usage.py
+uv run examples/01_place_and_cancel_order.py
 ```
 
 Expected output:
-```
+
+```sh
 ==================================================
 HyperLiquid API - Example 01
+📈 Place & Cancel Limit Orders
 ==================================================
 Order placed successfully!
-Order ID: 38856319342
-Client Order ID: 0x18edf09f7bf5cf16cf792bf4dc051fca
+Order ID: 39205192325
+Client Order ID: 0x767f340108a94fbab418d5f6b2fd5ff5
 Order cancelled successfully!
 ```
 
@@ -139,7 +138,7 @@ from hl_api import (
 )
 
 try:
-    response = await hl.limit_order(...)
+    response = hl.limit_order(...)
 except ValidationError as e:
     print(f"Invalid input: {e.message}")
     print(f"Field: {e.field}, Value: {e.value}")

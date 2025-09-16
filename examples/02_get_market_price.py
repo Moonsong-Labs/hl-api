@@ -1,6 +1,5 @@
 """Market Price Fetching Example for HyperLiquid Unified API."""
 
-import asyncio
 import logging
 import os
 
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-async def basic_price_fetching():
+def basic_price_fetching():
     """Demonstrate basic market price fetching."""
 
     private_key = os.getenv("PRIVATE_KEY")
@@ -28,7 +27,7 @@ async def basic_price_fetching():
         account_address=os.getenv("ACCOUNT_ADDRESS"),
     )
 
-    await hl_core.connect()
+    hl_core.connect()
     logger.info("Connected to HyperLiquid testnet")
 
     try:
@@ -42,14 +41,14 @@ async def basic_price_fetching():
 
         # Fetch BTC price
         try:
-            btc_price = await hl_core.get_market_price("BTC")
+            btc_price = hl_core.get_market_price("BTC")
             print(f"BTC Price: ${btc_price:,.2f}")
         except Exception as e:
             print(f"Error fetching BTC price: {e}")
 
         # Fetch ETH price
         try:
-            eth_price = await hl_core.get_market_price("ETH")
+            eth_price = hl_core.get_market_price("ETH")
             print(f"ETH Price: ${eth_price:,.2f}")
         except Exception as e:
             print(f"Error fetching ETH price: {e}")
@@ -63,7 +62,7 @@ async def basic_price_fetching():
 
         for asset in assets:
             try:
-                price = await hl_core.get_market_price(asset)
+                price = hl_core.get_market_price(asset)
                 prices[asset] = price
                 print(f"{asset:>6}: ${price:>10,.2f}")
             except ValueError as e:
@@ -105,7 +104,7 @@ async def basic_price_fetching():
 
         # Try fetching an invalid asset
         try:
-            invalid_price = await hl_core.get_market_price("INVALID_ASSET")
+            invalid_price = hl_core.get_market_price("INVALID_ASSET")
             print(f"Invalid asset price: {invalid_price}")
         except ValueError as e:
             print(f"✅ Correctly caught error for invalid asset: {e}")
@@ -114,7 +113,7 @@ async def basic_price_fetching():
 
         # Try fetching with empty string
         try:
-            empty_price = await hl_core.get_market_price("")
+            empty_price = hl_core.get_market_price("")
             print(f"Empty asset price: {empty_price}")
         except ValueError as e:
             print(f"✅ Correctly caught error for empty asset: {e}")
@@ -124,11 +123,11 @@ async def basic_price_fetching():
     except Exception as e:
         logger.error(f"Error in basic price fetching: {e}")
     finally:
-        await hl_core.disconnect()
+        hl_core.disconnect()
         logger.info("Disconnected from HyperLiquid")
 
 
-async def main():
+def main():
     """Run all market price examples."""
     try:
         print("=" * 50)
@@ -136,7 +135,7 @@ async def main():
         print("🔍 Market Prices")
         print("=" * 60)
 
-        await basic_price_fetching()
+        basic_price_fetching()
 
     except Exception as e:
         logger.error(f"Error in main: {e}")
@@ -145,4 +144,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

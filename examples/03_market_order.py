@@ -1,6 +1,5 @@
 """Market Order Example for HyperLiquid Unified API."""
 
-import asyncio
 import os
 
 from dotenv import load_dotenv
@@ -10,7 +9,7 @@ from hl_api import HLProtocolCore, generate_cloid
 load_dotenv()
 
 
-async def example_market_orders():
+def example_market_orders():
     """Demonstrate native market order functionality."""
 
     private_key = os.getenv("PRIVATE_KEY")
@@ -23,11 +22,11 @@ async def example_market_orders():
         account_address=os.getenv("ACCOUNT_ADDRESS"),
     )
 
-    await hl_core.connect()
+    hl_core.connect()
 
     try:
         try:
-            current_btc_price = await hl_core.get_market_price("BTC")
+            current_btc_price = hl_core.get_market_price("BTC")
             print(f"Current BTC price: ${current_btc_price:,.2f}")
         except Exception as e:
             print(f"Could not fetch current price: {e}")
@@ -42,7 +41,7 @@ async def example_market_orders():
         print("- Slippage: 0.5% (0.005)")
         print(f"- Client Order ID: {cloid}")
 
-        response = await hl_core.market_order(
+        response = hl_core.market_order(
             asset="BTC",
             is_buy=True,
             sz=0.0001,
@@ -74,7 +73,7 @@ async def example_market_orders():
         print("- Size: 0.00005 BTC (smaller size)")
         print("- Slippage: 1% (0.01)")
 
-        sell_response = await hl_core.market_order(
+        sell_response = hl_core.market_order(
             asset="BTC",
             is_buy=False,  # Sell order
             sz=0.00005,
@@ -96,7 +95,7 @@ async def example_market_orders():
 
         print("Attempting to close BTC position...")
 
-        close_response = await hl_core.market_close_position(
+        close_response = hl_core.market_close_position(
             asset="BTC",
             size=None,  # Close entire position
             slippage=0.02,  # 2% slippage for position closing
@@ -115,10 +114,10 @@ async def example_market_orders():
         print(f"Error in market order example: {e}")
 
     finally:
-        await hl_core.disconnect()
+        hl_core.disconnect()
 
 
-async def main():
+def main():
     """Run market order examples."""
 
     print("=" * 50)
@@ -127,7 +126,7 @@ async def main():
     print("=" * 60)
 
     try:
-        await example_market_orders()
+        example_market_orders()
     except Exception as e:
         print(f"L Error: {e}")
         print("=� Make sure you have PRIVATE_KEY set in your .env file")
@@ -135,4 +134,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
