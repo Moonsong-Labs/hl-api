@@ -21,7 +21,7 @@ class HLProtocolBase(ABC):
     """
 
     @abstractmethod
-    async def limit_order(
+    def limit_order(
         self,
         asset: str,
         is_buy: bool,
@@ -48,7 +48,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> TransferResponse:
+    def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> TransferResponse:
         """Transfer funds to/from vault (CoreWriter Action ID 2).
 
         Args:
@@ -62,7 +62,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def token_delegate(
+    def token_delegate(
         self, validator: str, amount: float, is_undelegate: bool = False
     ) -> DelegateResponse:
         """Delegate or undelegate tokens (CoreWriter Action ID 3).
@@ -78,7 +78,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def staking_deposit(self, amount: float) -> StakingResponse:
+    def staking_deposit(self, amount: float) -> StakingResponse:
         """Deposit tokens for staking (CoreWriter Action ID 4).
 
         Args:
@@ -90,7 +90,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def staking_withdraw(self, amount: float) -> StakingResponse:
+    def staking_withdraw(self, amount: float) -> StakingResponse:
         """Withdraw staked tokens (CoreWriter Action ID 5).
 
         Args:
@@ -102,7 +102,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def spot_send(
+    def spot_send(
         self, recipient: str, token: str, amount: float, destination: str
     ) -> SendResponse:
         """Send spot tokens (CoreWriter Action ID 6).
@@ -119,7 +119,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def perp_send(self, recipient: str, amount: float, destination: str) -> SendResponse:
+    def perp_send(self, recipient: str, amount: float, destination: str) -> SendResponse:
         """Send perp collateral (CoreWriter Action ID 7).
 
         Args:
@@ -133,7 +133,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
+    def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
         """Transfer USD from spot to perp (CoreWriter Action ID 8).
 
         Args:
@@ -145,7 +145,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
+    def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
         """Transfer USD from perp to spot (CoreWriter Action ID 9).
 
         Args:
@@ -157,7 +157,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
+    def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
         """Cancel an order by OID (CoreWriter Action ID 10).
 
         Args:
@@ -170,7 +170,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def cancel_order_by_cloid(self, asset: str, cloid: str) -> CancelResponse:
+    def cancel_order_by_cloid(self, asset: str, cloid: str) -> CancelResponse:
         """Cancel an order by CLOID (CoreWriter Action ID 11).
 
         Args:
@@ -183,7 +183,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def approve_builder_fee(self, builder: str, fee: float, nonce: int) -> ApprovalResponse:
+    def approve_builder_fee(self, builder: str, fee: float, nonce: int) -> ApprovalResponse:
         """Approve builder fee (CoreWriter Action ID 12).
 
         Args:
@@ -197,7 +197,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def connect(self) -> None:
+    def connect(self) -> None:
         """Establish connection to the protocol.
 
         Implementation-specific connection logic.
@@ -205,7 +205,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def disconnect(self) -> None:
+    def disconnect(self) -> None:
         """Close connection to the protocol.
 
         Implementation-specific disconnection logic.
@@ -213,7 +213,7 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    async def is_connected(self) -> bool:
+    def is_connected(self) -> bool:
         """Check if connected to the protocol.
 
         Returns:

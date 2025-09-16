@@ -1,48 +1,37 @@
 """Market Order Example for HyperLiquid Unified API."""
 
-import asyncio
 import os
 
 from dotenv import load_dotenv
 
 from hl_api import HLProtocolCore, generate_cloid
 
-# Load environment variables from .env file
 load_dotenv()
 
 
-async def example_market_orders():
+def example_market_orders():
     """Demonstrate native market order functionality."""
 
-    # Get credentials from environment variables
     private_key = os.getenv("PRIVATE_KEY")
     if not private_key:
         raise ValueError("PRIVATE_KEY not found in environment variables")
 
-    # Initialize Core protocol
     hl_core = HLProtocolCore(
         private_key=private_key,
-        testnet=True,  # Use testnet for testing
+        testnet=True,
         account_address=os.getenv("ACCOUNT_ADDRESS"),
     )
 
-    # Connect to HyperLiquid
-    await hl_core.connect()
+    hl_core.connect()
 
     try:
-        print("=" * 50)
-        print("Native Market Order Example")
-        print("=" * 50)
-
-        # Get current market price for context
         try:
-            current_btc_price = await hl_core.get_market_price("BTC")
+            current_btc_price = hl_core.get_market_price("BTC")
             print(f"Current BTC price: ${current_btc_price:,.2f}")
         except Exception as e:
             print(f"Could not fetch current price: {e}")
             current_btc_price = None
 
-        # Generate unique client order ID
         cloid = generate_cloid()
 
         # Execute native market order with built-in slippage protection
@@ -52,7 +41,7 @@ async def example_market_orders():
         print("- Slippage: 0.5% (0.005)")
         print(f"- Client Order ID: {cloid}")
 
-        response = await hl_core.market_order(
+        response = hl_core.market_order(
             asset="BTC",
             is_buy=True,
             sz=0.0001,
@@ -84,7 +73,7 @@ async def example_market_orders():
         print("- Size: 0.00005 BTC (smaller size)")
         print("- Slippage: 1% (0.01)")
 
-        sell_response = await hl_core.market_order(
+        sell_response = hl_core.market_order(
             asset="BTC",
             is_buy=False,  # Sell order
             sz=0.00005,
@@ -106,7 +95,7 @@ async def example_market_orders():
 
         print("Attempting to close BTC position...")
 
-        close_response = await hl_core.market_close_position(
+        close_response = hl_core.market_close_position(
             asset="BTC",
             size=None,  # Close entire position
             slippage=0.02,  # 2% slippage for position closing
@@ -125,14 +114,19 @@ async def example_market_orders():
         print(f"Error in market order example: {e}")
 
     finally:
-        # Always disconnect
-        await hl_core.disconnect()
+        hl_core.disconnect()
 
 
-async def main():
+def main():
     """Run market order examples."""
+
+    print("=" * 50)
+    print("HyperLiquid API - Example 03")
+    print("🏧 Market Orders")
+    print("=" * 60)
+
     try:
-        await example_market_orders()
+        example_market_orders()
     except Exception as e:
         print(f"L Error: {e}")
         print("=� Make sure you have PRIVATE_KEY set in your .env file")
@@ -140,4 +134,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

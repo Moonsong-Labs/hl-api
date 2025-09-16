@@ -66,3 +66,19 @@ jobs:
         run: uv sync --frozen
       - name: Run tests
         run: uv run pytest
+  
+  run_ex:
+    name: Run example script
+    runs-on: ubuntu-latest
+    env:
+      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup uv and Python
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Sync project dependencies (frozen)
+        run: uv sync --frozen
+      - run: uv run examples/02_get_market_price.py

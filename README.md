@@ -26,35 +26,32 @@ uv sync
 ### Using HyperLiquid Core
 
 ```python
-import asyncio
 from hl_api import HLProtocolCore
 
-async def main():
-    # Initialize Core protocol
-    hl = HLProtocolCore(
-        private_key="YOUR_PRIVATE_KEY",
-        testnet=True  # Use mainnet in production
-    )
-    
+# Initialize Core protocol
+hl = HLProtocolCore(
+    private_key="YOUR_PRIVATE_KEY",
+    testnet=True,  # Use mainnet in production
+)
+
+try:
     # Connect
-    await hl.connect()
-    
+    hl.connect()
+
     # Place a limit order
-    response = await hl.limit_order(
+    response = hl.limit_order(
         asset="BTC",  # BTC-PERP
         is_buy=True,
         limit_px=65000.0,  # $65,000
-        sz=0.1,            # 0.1 BTC
-        tif="GTC"
+        sz=0.1,  # 0.1 BTC
+        tif="GTC",
     )
-    
+
     if response.success:
         print(f"Order placed: {response.order_id}")
-    
+finally:
     # Disconnect
-    await hl.disconnect()
-
-asyncio.run(main())
+    hl.disconnect()
 ```
 
 ### Using HyperLiquid EVM
@@ -96,17 +93,19 @@ ACCOUNT_ADDRESS=your_account_address
 ### Run Example
 
 ```bash
-uv run examples/basic_usage.py
+uv run examples/01_place_and_cancel_order.py
 ```
 
 Expected output:
-```
+
+```sh
 ==================================================
 HyperLiquid API - Example 01
+📈 Place & Cancel Limit Orders
 ==================================================
 Order placed successfully!
-Order ID: 38856319342
-Client Order ID: 0x18edf09f7bf5cf16cf792bf4dc051fca
+Order ID: 39205192325
+Client Order ID: 0x767f340108a94fbab418d5f6b2fd5ff5
 Order cancelled successfully!
 ```
 
@@ -139,7 +138,7 @@ from hl_api import (
 )
 
 try:
-    response = await hl.limit_order(...)
+    response = hl.limit_order(...)
 except ValidationError as e:
     print(f"Invalid input: {e.message}")
     print(f"Field: {e.field}, Value: {e.value}")
@@ -151,11 +150,67 @@ except HLProtocolError as e:
 
 ## Examples
 
-### Placing Limit Order
+### Place & cancel a limit order
 
-### Canceling Order
+```python
+cloid = generate_cloid()
+hl.limit_order(
+    asset="BTC",
+    is_buy=True,
+    limit_px=60000.0,
+    sz=0.001,
+    tif="GTC",
+    cloid=cloid,
+)
+hl.cancel_order(asset="BTC", order_id=cloid)
+```
 
-### Modifying Order
+Args:
+
+- `asset` – symbol to quote; e.g. `BTC`, `ETH`. Perp symbol from [trading docs](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-perpetuals-metadata-universe-and-margin-tables)
+- `is_buy` – `True` to bid, `False` to ask
+- `limit_px` – limit price in USD
+- `sz` – base asset size
+- `tif` – time-in-force (`"GTC"`, `"IOC"`, etc.)
+- `cloid` – optional client order ID reused for cancellation
+
+### Fetch market prices
+
+```python
+price = hl.get_market_price("BTC")
+```
+
+Args:
+
+- `asset` – symbol to quote; e.g. `BTC`, `ETH`. Perp symbol from [trading docs](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-perpetuals-metadata-universe-and-margin-tables)
+
+### Submit market & close orders
+
+```python
+cloid = generate_cloid()
+hl.market_order(asset="BTC", is_buy=True, sz=0.0001, slippage=0.005, cloid=cloid)
+hl.market_close_position(asset="BTC", size=None, slippage=0.02, cloid=generate_cloid())
+```
+
+Args:
+
+- `asset` – symbol to quote; e.g. `BTC`, `ETH`. Perp symbol from [trading docs](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-perpetuals-metadata-universe-and-margin-tables)
+- `is_buy` – direction flag; ignored for `market_close_position`
+- `sz` – quantity filled immediately at market
+- `slippage` – max price impact (e.g. `0.005` = 0.5%)
+- `cloid` – client order identifier per request
+- `size` – position size to flatten; `None` closes all
+
+### USD class transfers
+
+```python
+hl.usd_class_transfer_to_spot(0.23)
+hl.usd_class_transfer_to_perp(0.2)
+```
+
+Args:
+
+- `amount` – USD to move between perp and spot vaults; see [portfolio docs](https://docs.hyperliquid.xyz/core/portfolio)
 
 ## Architecture
 
@@ -163,4 +218,52 @@ except HLProtocolError as e:
 HLProtocolBase (Abstract)
     ├── HLProtocolCore (HyperLiquid SDK implementation)
     └── HLProtocolEVM (CoreWriter precompile implementation)
+```
+
+### API
+
+> [!INFO]  
+> This useful for when you want to check via the REST API certain values, consult the docs for [INFO](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint) and [EXCHANGE](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint) endpoints. This is not a replacement for this API lib, but can be used for manual inspection of values.
+
+#### Get all Mids
+
+```sh
+curl --location 'https://api.hyperliquid-testnet.xyz/info' \
+--header 'Content-Type: application/json' \
+--data '{
+    "type": "allMids",
+    "dex": ""
+}'
+```
+
+#### Get User Balance
+
+```sh
+curl --location 'https://api.hyperliquid-testnet.xyz/info' \
+--header 'Content-Type: application/json' \
+--data '{
+    "type": "spotClearinghouseState",
+    "user":"0xb764428a29EAEbe8e2301F5924746F818b331F5A"
+}'
+```
+
+#### Get Perp Info
+
+```sh
+curl --location 'https://api.hyperliquid-testnet.xyz/info' \
+--header 'Content-Type: application/json' \
+--data '{
+    "type": "metaAndAssetCtxs"
+}'
+```
+
+#### Get Orderbook snapshot
+
+```sh
+curl --location 'https://api.hyperliquid-testnet.xyz/info' \
+--header 'Content-Type: application/json' \
+--data '{
+    "type": "l2Book",
+    "coin": "FARTCOIN"
+}'
 ```
