@@ -166,7 +166,8 @@ hl.cancel_order(asset="BTC", order_id=cloid)
 ```
 
 Args:
-- `asset` – perp symbol from [trading docs](https://docs.hyperliquid.xyz/core/trading)
+
+- `asset` – symbol to quote; e.g. `BTC`, `ETH`. Perp symbol from [trading docs](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-perpetuals-metadata-universe-and-margin-tables)
 - `is_buy` – `True` to bid, `False` to ask
 - `limit_px` – limit price in USD
 - `sz` – base asset size
@@ -180,7 +181,8 @@ price = hl.get_market_price("BTC")
 ```
 
 Args:
-- `asset` – symbol to quote; see [market data docs](https://docs.hyperliquid.xyz/core/market-data)
+
+- `asset` – symbol to quote; e.g. `BTC`, `ETH`. Perp symbol from [trading docs](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-perpetuals-metadata-universe-and-margin-tables)
 
 ### Submit market & close orders
 
@@ -191,7 +193,8 @@ hl.market_close_position(asset="BTC", size=None, slippage=0.02, cloid=generate_c
 ```
 
 Args:
-- `asset` – perp symbol from [trading docs](https://docs.hyperliquid.xyz/core/trading)
+
+- `asset` – symbol to quote; e.g. `BTC`, `ETH`. Perp symbol from [trading docs](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals#retrieve-perpetuals-metadata-universe-and-margin-tables)
 - `is_buy` – direction flag; ignored for `market_close_position`
 - `sz` – quantity filled immediately at market
 - `slippage` – max price impact (e.g. `0.005` = 0.5%)
@@ -206,6 +209,7 @@ hl.usd_class_transfer_to_perp(0.2)
 ```
 
 Args:
+
 - `amount` – USD to move between perp and spot vaults; see [portfolio docs](https://docs.hyperliquid.xyz/core/portfolio)
 
 ## Architecture
@@ -214,4 +218,52 @@ Args:
 HLProtocolBase (Abstract)
     ├── HLProtocolCore (HyperLiquid SDK implementation)
     └── HLProtocolEVM (CoreWriter precompile implementation)
+```
+
+### API
+
+> [!INFO]  
+> This useful for when you want to check via the REST API certain values, consult the docs for [INFO](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint) and [EXCHANGE](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint) endpoints. This is not a replacement for this API lib, but can be used for manual inspection of values.
+
+#### Get all Mids
+
+```sh
+curl --location 'https://api.hyperliquid-testnet.xyz/info' \
+--header 'Content-Type: application/json' \
+--data '{
+    "type": "allMids",
+    "dex": ""
+}'
+```
+
+#### Get User Balance
+
+```sh
+curl --location 'https://api.hyperliquid-testnet.xyz/info' \
+--header 'Content-Type: application/json' \
+--data '{
+    "type": "spotClearinghouseState",
+    "user":"0xb764428a29EAEbe8e2301F5924746F818b331F5A"
+}'
+```
+
+#### Get Perp Info
+
+```sh
+curl --location 'https://api.hyperliquid-testnet.xyz/info' \
+--header 'Content-Type: application/json' \
+--data '{
+    "type": "metaAndAssetCtxs"
+}'
+```
+
+#### Get Orderbook snapshot
+
+```sh
+curl --location 'https://api.hyperliquid-testnet.xyz/info' \
+--header 'Content-Type: application/json' \
+--data '{
+    "type": "l2Book",
+    "coin": "FARTCOIN"
+}'
 ```
