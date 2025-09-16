@@ -222,7 +222,7 @@ HLProtocolBase (Abstract)
 
 ### API
 
-> [!INFO]  
+> [!NOTE]  
 > This useful for when you want to check via the REST API certain values, consult the docs for [INFO](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint) and [EXCHANGE](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint) endpoints. This is not a replacement for this API lib, but can be used for manual inspection of values.
 
 #### Get all Mids
