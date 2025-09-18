@@ -167,10 +167,7 @@ class VerificationPayload:
             return cls.default()
 
         verification_type = int(
-            data.get("verificationType")
-            or data.get("verification_type")
-            or data.get("type")
-            or 0
+            data.get("verificationType") or data.get("verification_type") or data.get("type") or 0
         )
 
         raw_data = data.get("verificationData") or data.get("verification_data") or b""
@@ -179,7 +176,9 @@ class VerificationPayload:
         proof_items = data.get("proof") or data.get("proofs") or []
         proof = [_coerce_bytes(item) for item in _iterable(proof_items)]
 
-        return cls(verification_type=verification_type, verification_data=verification_data, proof=proof)
+        return cls(
+            verification_type=verification_type, verification_data=verification_data, proof=proof
+        )
 
     def as_tuple(self) -> tuple[int, bytes, list[bytes]]:
         """Return the payload as tuple consumable by web3."""

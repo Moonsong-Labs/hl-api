@@ -47,7 +47,9 @@ COREWRITER_ADDRESS = "0x3333333333333333333333333333333333333333"
 DEFAULT_REQUEST_TIMEOUT = 10.0
 DEFAULT_RECEIPT_TIMEOUT = 120.0
 
-VerificationResolver = Callable[[str, Mapping[str, Any]], VerificationPayload | Mapping[str, Any] | None]
+VerificationResolver = Callable[
+    [str, Mapping[str, Any]], VerificationPayload | Mapping[str, Any] | None
+]
 
 
 class HLProtocolEVM(HLProtocolBase):
@@ -178,7 +180,9 @@ class HLProtocolEVM(HLProtocolBase):
                 cloid_uint,
                 payload.as_tuple(),
             ]
-            tx_result = self._send_contract_transaction(fn_name, args, action="limit_order", context=context)
+            tx_result = self._send_contract_transaction(
+                fn_name, args, action="limit_order", context=context
+            )
             receipt = tx_result.get("receipt")
             status = bool(receipt is None or receipt.get("status", 0) == 1)
             error_text = None if status else "Transaction reverted"
@@ -297,7 +301,9 @@ class HLProtocolEVM(HLProtocolBase):
                 args = [token_index, amount_uint, payload.as_tuple()]
                 fn_name = "withdrawTokenToEvm"
 
-            tx_result = self._send_contract_transaction(fn_name, args, action="spot_send", context=context)
+            tx_result = self._send_contract_transaction(
+                fn_name, args, action="spot_send", context=context
+            )
             receipt = tx_result.get("receipt")
             status = bool(receipt is None or receipt.get("status", 0) == 1)
             error_text = None if status else "Transaction reverted"
@@ -389,7 +395,12 @@ class HLProtocolEVM(HLProtocolBase):
     # Helpers
     # ------------------------------------------------------------------
     def _ensure_connected(self) -> None:
-        if not self.is_connected() or self._web3 is None or self._account is None or self._strategy_contract is None:
+        if (
+            not self.is_connected()
+            or self._web3 is None
+            or self._account is None
+            or self._strategy_contract is None
+        ):
             raise NetworkError("EVM connector is not connected", endpoint=self.rpc_url)
 
     def _fetch_strategy_abi(self) -> list[dict[str, Any]]:
@@ -598,7 +609,9 @@ class HLProtocolEVM(HLProtocolBase):
         try:
             return json.loads(text)
         except json.JSONDecodeError as exc:
-            raise NetworkError("Failed to decode JSON response", endpoint=url, details={"error": str(exc)}) from exc
+            raise NetworkError(
+                "Failed to decode JSON response", endpoint=url, details={"error": str(exc)}
+            ) from exc
 
     def _send_contract_transaction(
         self,
@@ -673,7 +686,9 @@ class HLProtocolEVM(HLProtocolBase):
             return None
         if isinstance(receipt, Mapping):
             return {key: self._serialise_receipt(value) for key, value in receipt.items()}
-        if isinstance(receipt, Sequence) and not isinstance(receipt, str | bytes | bytearray | HexBytes):
+        if isinstance(receipt, Sequence) and not isinstance(
+            receipt, str | bytes | bytearray | HexBytes
+        ):
             return [self._serialise_receipt(item) for item in receipt]
         if isinstance(receipt, bytes | bytearray | HexBytes):
             return HexBytes(receipt).hex()
