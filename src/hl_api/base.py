@@ -21,6 +21,62 @@ class HLProtocolBase(ABC):
     """
 
     @abstractmethod
+    def get_market_price(self, asset: str) -> float:
+        """Fetch the current market price for an asset.
+
+        Args:
+            asset: Asset symbol (e.g., "BTC", "ETH")
+
+        Returns:
+            Mid price as a float
+        """
+        pass
+
+    @abstractmethod
+    def market_order(
+        self,
+        asset: str,
+        is_buy: bool,
+        sz: float,
+        slippage: float = 0.05,
+        cloid: str | None = None,
+    ) -> OrderResponse:
+        """Place a market order that executes immediately at the best price.
+
+        Args:
+            asset: Asset symbol (e.g., "BTC", "ETH")
+            is_buy: True for buy order, False for sell
+            sz: Order size as float (e.g., 0.1 for 0.1 BTC)
+            slippage: Slippage tolerance expressed as a decimal (e.g., 0.05 = 5%)
+            cloid: Client order ID (optional, 0 means no cloid)
+
+        Returns:
+            OrderResponse with order details or error
+        """
+        pass
+
+    @abstractmethod
+    def market_close_position(
+        self,
+        asset: str,
+        size: float | None = None,
+        slippage: float = 0.005,
+        cloid: str | None = None,
+    ) -> OrderResponse:
+        """Close an open position using a market order.
+
+        Args:
+            asset: Asset symbol (e.g., "BTC", "ETH")
+            size: Optional position size to close (None closes entire position)
+            slippage: Slippage tolerance expressed as a decimal (e.g., 0.005 = 0.5%)
+            cloid: Client order ID (optional, 0 means no cloid)
+
+        Returns:
+            OrderResponse with order details or error
+        """
+        pass
+
+    @abstractmethod
     def limit_order(
         self,
         asset: str,

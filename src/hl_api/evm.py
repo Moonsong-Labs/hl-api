@@ -20,7 +20,7 @@ from web3.types import ChecksumAddress, TxParams
 
 from .abi import HyperliquidStrategy_abi
 from .base import HLProtocolBase
-from .exceptions import NetworkError, ValidationError
+from .exceptions import NetworkError, NotImplementedError, ValidationError
 from .types import (
     ApprovalResponse,
     CancelResponse,
@@ -153,6 +153,40 @@ class HLProtocolEVM(HLProtocolBase):
     # ------------------------------------------------------------------
     # Core actions
     # ------------------------------------------------------------------
+    def get_market_price(self, asset: str) -> float:
+        logger.warning(
+            "get_market_price not supported on HyperliquidStrategy contract for %s", asset
+        )
+        raise NotImplementedError("get_market_price")
+
+    def market_order(
+        self,
+        asset: str,
+        is_buy: bool,
+        sz: float,
+        slippage: float = 0.05,
+        cloid: str | None = None,
+    ) -> OrderResponse:
+        logger.warning("market_order not supported on HyperliquidStrategy contract")
+        direction = "buy" if is_buy else "sell"
+        error_message = (
+            "Market orders are not currently available via the HyperliquidStrategy contract"
+        )
+        return OrderResponse(success=False, cloid=cloid, error=f"{error_message} ({direction})")
+
+    def market_close_position(
+        self,
+        asset: str,
+        size: float | None = None,
+        slippage: float = 0.05,
+        cloid: str | None = None,
+    ) -> OrderResponse:
+        logger.warning(
+            "market_close_position not supported on HyperliquidStrategy contract for %s", asset
+        )
+        error_message = "Closing positions with market orders is not currently available via the HyperliquidStrategy contract"
+        return OrderResponse(success=False, cloid=cloid, error=error_message)
+
     def limit_order(
         self,
         asset: str,
