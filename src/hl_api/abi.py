@@ -1,0 +1,1247 @@
+from typing import Any
+
+HyperliquidStrategy_abi: list[dict[str, Any]] = [
+  {
+    "type": "constructor",
+    "inputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "CURATOR_ROLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "DEFAULT_ADMIN_ROLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "DLN_DESTINATION",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "GUARDIAN_ROLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "UPGRADE_INTERFACE_VERSION",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "bridgeErc20ViaDeBridge",
+    "inputs": [
+      {
+        "name": "giveTokenAddress",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "giveAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "takeAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "takeTokenAddress",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "nativeFee",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "salt",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "verificationPayload",
+        "type": "tuple[2]",
+        "internalType": "struct IVerifier.VerificationPayload[2]",
+        "components": [
+          {
+            "name": "verificationType",
+            "type": "uint8",
+            "internalType": "enum IVerifier.VerificationType"
+          },
+          {
+            "name": "verificationData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "orderId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "bridgeNativeViaDeBridge",
+    "inputs": [
+      {
+        "name": "giveAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "takeAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "takeTokenAddress",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "nativeFee",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "salt",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "verificationPayload",
+        "type": "tuple",
+        "internalType": "struct IVerifier.VerificationPayload",
+        "components": [
+          {
+            "name": "verificationType",
+            "type": "uint8",
+            "internalType": "enum IVerifier.VerificationType"
+          },
+          {
+            "name": "verificationData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "orderId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "bridgeRecipient",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "cancelOrderByCloid",
+    "inputs": [
+      {
+        "name": "asset",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "cloid",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
+        "name": "verificationPayload",
+        "type": "tuple",
+        "internalType": "struct IVerifier.VerificationPayload",
+        "components": [
+          {
+            "name": "verificationType",
+            "type": "uint8",
+            "internalType": "enum IVerifier.VerificationType"
+          },
+          {
+            "name": "verificationData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "cancelOrderByOid",
+    "inputs": [
+      {
+        "name": "asset",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "oid",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "verificationPayload",
+        "type": "tuple",
+        "internalType": "struct IVerifier.VerificationPayload",
+        "components": [
+          {
+            "name": "verificationType",
+            "type": "uint8",
+            "internalType": "enum IVerifier.VerificationType"
+          },
+          {
+            "name": "verificationData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "debridgeTakeChainId",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "depositHypeToCore",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "verificationPayload",
+        "type": "tuple",
+        "internalType": "struct IVerifier.VerificationPayload",
+        "components": [
+          {
+            "name": "verificationType",
+            "type": "uint8",
+            "internalType": "enum IVerifier.VerificationType"
+          },
+          {
+            "name": "verificationData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "depositTokenToCore",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "tokenIndex",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "verificationPayload",
+        "type": "tuple",
+        "internalType": "struct IVerifier.VerificationPayload",
+        "components": [
+          {
+            "name": "verificationType",
+            "type": "uint8",
+            "internalType": "enum IVerifier.VerificationType"
+          },
+          {
+            "name": "verificationData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getRoleAdmin",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getRoleMember",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "index",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getRoleMemberCount",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getRoleMembers",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address[]",
+        "internalType": "address[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "grantRole",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "hasRole",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "hypeTokenIndex",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "initialize",
+    "inputs": [
+      {
+        "name": "subvault_",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "admin",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "guardian",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "curator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "bridgeRecipient",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "debridgeTakeChainId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "hypeTokenIndex_",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "placeLimitBuyOrder",
+    "inputs": [
+      {
+        "name": "asset",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "price",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "size",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "reduceOnly",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "tif",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "cloid",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
+        "name": "verificationPayload",
+        "type": "tuple",
+        "internalType": "struct IVerifier.VerificationPayload",
+        "components": [
+          {
+            "name": "verificationType",
+            "type": "uint8",
+            "internalType": "enum IVerifier.VerificationType"
+          },
+          {
+            "name": "verificationData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "placeLimitSellOrder",
+    "inputs": [
+      {
+        "name": "asset",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "price",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "size",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "reduceOnly",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "tif",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "cloid",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
+        "name": "verificationPayload",
+        "type": "tuple",
+        "internalType": "struct IVerifier.VerificationPayload",
+        "components": [
+          {
+            "name": "verificationType",
+            "type": "uint8",
+            "internalType": "enum IVerifier.VerificationType"
+          },
+          {
+            "name": "verificationData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "proxiableUUID",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "renounceRole",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "callerConfirmation",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "revokeRole",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setDeBridgeStatus",
+    "inputs": [
+      {
+        "name": "enabled",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "subvault",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "supportsInterface",
+    "inputs": [
+      {
+        "name": "interfaceId",
+        "type": "bytes4",
+        "internalType": "bytes4"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "transferPerpToSpot",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "verificationPayload",
+        "type": "tuple",
+        "internalType": "struct IVerifier.VerificationPayload",
+        "components": [
+          {
+            "name": "verificationType",
+            "type": "uint8",
+            "internalType": "enum IVerifier.VerificationType"
+          },
+          {
+            "name": "verificationData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferSpotToPerp",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "verificationPayload",
+        "type": "tuple",
+        "internalType": "struct IVerifier.VerificationPayload",
+        "components": [
+          {
+            "name": "verificationType",
+            "type": "uint8",
+            "internalType": "enum IVerifier.VerificationType"
+          },
+          {
+            "name": "verificationData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "upgradeToAndCall",
+    "inputs": [
+      {
+        "name": "newImplementation",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "data",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "withdrawHypeToEvm",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "verificationPayload",
+        "type": "tuple",
+        "internalType": "struct IVerifier.VerificationPayload",
+        "components": [
+          {
+            "name": "verificationType",
+            "type": "uint8",
+            "internalType": "enum IVerifier.VerificationType"
+          },
+          {
+            "name": "verificationData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdrawTokenToEvm",
+    "inputs": [
+      {
+        "name": "tokenIndex",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "amount",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "verificationPayload",
+        "type": "tuple",
+        "internalType": "struct IVerifier.VerificationPayload",
+        "components": [
+          {
+            "name": "verificationType",
+            "type": "uint8",
+            "internalType": "enum IVerifier.VerificationType"
+          },
+          {
+            "name": "verificationData",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "proof",
+            "type": "bytes32[]",
+            "internalType": "bytes32[]"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "DeBridgeStatusUpdated",
+    "inputs": [
+      {
+        "name": "enabled",
+        "type": "bool",
+        "indexed": False,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": False
+  },
+  {
+    "type": "event",
+    "name": "Initialized",
+    "inputs": [
+      {
+        "name": "version",
+        "type": "uint64",
+        "indexed": False,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": False
+  },
+  {
+    "type": "event",
+    "name": "RoleAdminChanged",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "indexed": True,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "previousAdminRole",
+        "type": "bytes32",
+        "indexed": True,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "newAdminRole",
+        "type": "bytes32",
+        "indexed": True,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": False
+  },
+  {
+    "type": "event",
+    "name": "RoleGranted",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "indexed": True,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "indexed": True,
+        "internalType": "address"
+      },
+      {
+        "name": "sender",
+        "type": "address",
+        "indexed": True,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": False
+  },
+  {
+    "type": "event",
+    "name": "RoleRevoked",
+    "inputs": [
+      {
+        "name": "role",
+        "type": "bytes32",
+        "indexed": True,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "account",
+        "type": "address",
+        "indexed": True,
+        "internalType": "address"
+      },
+      {
+        "name": "sender",
+        "type": "address",
+        "indexed": True,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": False
+  },
+  {
+    "type": "event",
+    "name": "Upgraded",
+    "inputs": [
+      {
+        "name": "implementation",
+        "type": "address",
+        "indexed": True,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": False
+  },
+  {
+    "type": "error",
+    "name": "AccessControlBadConfirmation",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "AccessControlUnauthorizedAccount",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "neededRole",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "AddressEmptyCode",
+    "inputs": [
+      {
+        "name": "target",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "BridgeApproveFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BridgeNotInitialized",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CallFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DeBridgeDisabled",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ERC1967InvalidImplementation",
+    "inputs": [
+      {
+        "name": "implementation",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ERC1967NonPayable",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "FailedCall",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidChainId",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidInitialization",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidMsgValue",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidTimeInForce",
+    "inputs": [
+      {
+        "name": "value",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "NotInitializing",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UUPSUnauthorizedCallContext",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UUPSUnsupportedProxiableUUID",
+    "inputs": [
+      {
+        "name": "slot",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ZeroAddress",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroAmount",
+    "inputs": []
+  }
+]

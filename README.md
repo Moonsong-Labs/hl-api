@@ -56,8 +56,52 @@ finally:
 
 ### Using HyperLiquid EVM
 
-> [!IMPORTANT]  
-> This is pending `flexible-vault` & `strategy` contract deployment and is not yet ready for use.
+The EVM connector routes CoreWriter actions through a deployed
+`HyperliquidStrategy` contract and is intended for vault integrations.
+Provide the strategy address during construction and optionally point the
+client at JSON resources for metadata and verification payloads.
+
+```python
+import os
+
+from hl_api import HLProtocolEVM
+
+hl = HLProtocolEVM(
+    private_key=os.environ["PRIVATE_KEY"],
+    rpc_url=os.environ.get("HYPER_EVM_RPC", "https://rpc.hyperliquid.xyz"),
+    strategy_address=os.environ["HYPERLIQUID_STRATEGY"],
+    verification_payload_url=os.environ.get("HYPERLIQUID_VERIFICATION_URL"),
+)
+
+hl.connect()
+hl.load_asset_metadata_from_url(
+    "https://raw.githubusercontent.com/Moonsong-Labs/hyperliquid-artifacts/main/assets.json"
+)
+try:
+    response = hl.limit_order(
+        asset="BTC",
+        is_buy=True,
+        limit_px=65000.0,
+        sz=0.05,
+        tif="GTC",
+    )
+    print(response)
+finally:
+    hl.disconnect()
+```
+
+Key parameters:
+
+- `strategy_address` (required) – deployed `HyperliquidStrategy` contract.
+- `load_asset_metadata_from_url(url)` (optional) – populate symbol/token indices after construction.
+- `verification_payload_url` (optional) – URL template returning verification payload JSON;
+  `{action}` is substituted with the method name.
+- `verification_payload_resolver` (optional) – Python callable to generate custom payloads.
+
+> [!NOTE]
+> Some CoreWriter actions (delegation, staking, builder fees, direct vault
+> transfers) are not currently implemented by the vault strategy and will
+> return a failure response from the connector.
 
 ## Testing Setup
 
