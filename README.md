@@ -74,9 +74,7 @@ hl = HLProtocolEVM(
 )
 
 hl.connect()
-hl.load_asset_metadata_from_url(
-    "https://raw.githubusercontent.com/Moonsong-Labs/hyperliquid-artifacts/main/assets.json"
-)
+hl.load_asset_metadata_from_info()
 try:
     response = hl.limit_order(
         asset="BTC",

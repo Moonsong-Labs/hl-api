@@ -67,6 +67,7 @@ class HLProtocolEVM(HLProtocolBase):
         verification_payload_resolver: VerificationResolver | None = None,
         wait_for_receipt: bool = True,
         receipt_timeout: float = DEFAULT_RECEIPT_TIMEOUT,
+        testnet: bool = True,
     ) -> None:
         self.private_key = private_key
         self.rpc_url = rpc_url
@@ -79,6 +80,7 @@ class HLProtocolEVM(HLProtocolBase):
         self._request_timeout = request_timeout
         self._wait_for_receipt = wait_for_receipt
         self._receipt_timeout = receipt_timeout
+        self._testnet = testnet
 
         self._web3: Web3 | None = None
         self._account: LocalAccount | None = None
@@ -89,6 +91,13 @@ class HLProtocolEVM(HLProtocolBase):
         self._asset_by_symbol: dict[str, int] = {}
         self._token_index_by_symbol: dict[str, int] = {}
         self._hype_token_index: int | None = None
+        self._metadata_loaded = False
+
+        self._info_url = (
+            "https://api.hyperliquid-testnet.xyz/info"
+            if self._testnet
+            else "https://api.hyperliquid.xyz/info"
+        )
 
     # ---------------------------------------------------------------------
     # Connection management
@@ -169,7 +178,6 @@ class HLProtocolEVM(HLProtocolBase):
                 "cloid": cloid_uint,
             }
             payload = self._resolve_verification_payload("limit_order", context)
-
             fn_name = "placeLimitBuyOrder" if is_buy else "placeLimitSellOrder"
             args: Sequence[Any] = [
                 asset_id,
@@ -199,7 +207,12 @@ class HLProtocolEVM(HLProtocolBase):
             return OrderResponse(success=False, cloid=cloid, error=str(exc))
         except NetworkError as exc:
             logger.error("Limit order failed: %s", exc)
-            return OrderResponse(success=False, cloid=cloid, error=str(exc))
+            return OrderResponse(
+                success=False,
+                cloid=cloid,
+                error=str(exc),
+                raw_response=getattr(exc, "details", None),
+            )
         except Exception as exc:  # pragma: no cover - operational safety
             logger.exception("Unexpected limit order failure")
             return OrderResponse(success=False, cloid=cloid, error=str(exc))
@@ -228,7 +241,11 @@ class HLProtocolEVM(HLProtocolBase):
         except ValidationError as exc:
             return CancelResponse(success=False, error=str(exc))
         except NetworkError as exc:
-            return CancelResponse(success=False, error=str(exc))
+            return CancelResponse(
+                success=False,
+                error=str(exc),
+                raw_response=getattr(exc, "details", None),
+            )
         except Exception as exc:  # pragma: no cover
             logger.exception("Unexpected cancel-by-oid failure")
             return CancelResponse(success=False, error=str(exc))
@@ -257,7 +274,11 @@ class HLProtocolEVM(HLProtocolBase):
         except ValidationError as exc:
             return CancelResponse(success=False, error=str(exc))
         except NetworkError as exc:
-            return CancelResponse(success=False, error=str(exc))
+            return CancelResponse(
+                success=False,
+                error=str(exc),
+                raw_response=getattr(exc, "details", None),
+            )
         except Exception as exc:  # pragma: no cover
             logger.exception("Unexpected cancel-by-cloid failure")
             return CancelResponse(success=False, error=str(exc))
@@ -350,7 +371,11 @@ class HLProtocolEVM(HLProtocolBase):
         except ValidationError as exc:
             return TransferResponse(success=False, error=str(exc))
         except NetworkError as exc:
-            return TransferResponse(success=False, error=str(exc))
+            return TransferResponse(
+                success=False,
+                error=str(exc),
+                raw_response=getattr(exc, "details", None),
+            )
         except Exception as exc:  # pragma: no cover
             logger.exception("Unexpected transferSpotToPerp failure")
             return TransferResponse(success=False, error=str(exc))
@@ -378,7 +403,11 @@ class HLProtocolEVM(HLProtocolBase):
         except ValidationError as exc:
             return TransferResponse(success=False, error=str(exc))
         except NetworkError as exc:
-            return TransferResponse(success=False, error=str(exc))
+            return TransferResponse(
+                success=False,
+                error=str(exc),
+                raw_response=getattr(exc, "details", None),
+            )
         except Exception as exc:  # pragma: no cover
             logger.exception("Unexpected transferPerpToSpot failure")
             return TransferResponse(success=False, error=str(exc))
@@ -417,6 +446,26 @@ class HLProtocolEVM(HLProtocolBase):
         self._ingest_asset_metadata(payload)
         if not self._asset_by_symbol and not self._token_index_by_symbol:
             logger.warning("Asset metadata from %s did not produce any symbol mappings", url)
+        self._metadata_loaded = True
+
+    def load_asset_metadata_from_info(self) -> None:
+        """Fetch asset metadata directly from the HyperLiquid info endpoint."""
+
+        payload = self._post_json(self._info_url, {"type": "meta"})
+        universe = payload.get("universe") if isinstance(payload, Mapping) else None
+        if isinstance(universe, Sequence):
+            for asset_id, entry in enumerate(universe):
+                if not isinstance(entry, Mapping):
+                    continue
+                symbol = entry.get("name")
+                if symbol:
+                    self._asset_by_symbol[str(symbol).upper()] = asset_id
+        else:
+            logger.warning("Meta response missing 'universe' array")
+
+        self._metadata_loaded = True
+        if not self._asset_by_symbol:
+            logger.warning("Meta info call did not produce any symbol mappings")
 
     def register_asset_metadata(self, payload: Any) -> None:
         """Register asset metadata from a provided object (dict/list/etc)."""
@@ -424,6 +473,7 @@ class HLProtocolEVM(HLProtocolBase):
         self._ingest_asset_metadata(payload)
         if not self._asset_by_symbol and not self._token_index_by_symbol:
             logger.warning("Asset metadata payload did not produce any symbol mappings")
+        self._metadata_loaded = True
 
     def _ingest_asset_metadata(self, payload: Any) -> None:
         if isinstance(payload, Mapping):
@@ -505,6 +555,13 @@ class HLProtocolEVM(HLProtocolBase):
             symbol = str(asset).upper()
             if symbol in self._asset_by_symbol:
                 return self._asset_by_symbol[symbol]
+            if not self._metadata_loaded:
+                try:
+                    self.load_asset_metadata_from_info()
+                except NetworkError as exc:
+                    logger.warning("Failed to load asset metadata from info endpoint: %s", exc)
+                if symbol in self._asset_by_symbol:
+                    return self._asset_by_symbol[symbol]
             raise ValidationError(
                 f"Unknown asset symbol '{asset}'",
                 field="asset",
@@ -613,6 +670,38 @@ class HLProtocolEVM(HLProtocolBase):
                 "Failed to decode JSON response", endpoint=url, details={"error": str(exc)}
             ) from exc
 
+    def _post_json(self, url: str, payload: Mapping[str, Any]) -> Any:
+        data = json.dumps(payload).encode("utf-8")
+        request = urlrequest.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json", "User-Agent": "hl-api/evm"},
+            method="POST",
+        )
+        try:
+            with urlrequest.urlopen(request, timeout=self._request_timeout) as response:
+                body = response.read()
+        except urlerror.HTTPError as exc:
+            raise NetworkError(
+                f"HTTP error {exc.code} while posting to {url}",
+                endpoint=url,
+                status_code=exc.code,
+            ) from exc
+        except urlerror.URLError as exc:
+            raise NetworkError(f"Failed to post to {url}: {exc.reason}", endpoint=url) from exc
+
+        try:
+            text = body.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise NetworkError("Response was not valid UTF-8", endpoint=url) from exc
+
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise NetworkError(
+                "Failed to decode JSON response", endpoint=url, details={"error": str(exc)}
+            ) from exc
+
     def _send_contract_transaction(
         self,
         function_name: str,
@@ -626,6 +715,15 @@ class HLProtocolEVM(HLProtocolBase):
         assert self._strategy_contract is not None
 
         function = getattr(self._strategy_contract.functions, function_name)(*args)
+        formatted_args = [self._summarise_param(arg) for arg in args]
+        formatted_context = {k: self._summarise_param(v) for k, v in context.items()}
+        logger.info(
+            "Calling strategy %s.%s with args=%s context=%s",
+            self.strategy_address,
+            function_name,
+            formatted_args,
+            formatted_context,
+        )
         try:
             base_tx = function.build_transaction(
                 {
@@ -635,10 +733,30 @@ class HLProtocolEVM(HLProtocolBase):
             )
 
             mutable_tx: dict[str, Any] = dict(base_tx)
-            if "chainId" not in mutable_tx:
-                mutable_tx["chainId"] = self._chain_id or self._web3.eth.chain_id
-            if "gasPrice" not in mutable_tx:
-                mutable_tx["gasPrice"] = self._web3.eth.gas_price
+            mutable_tx.setdefault("chainId", self._chain_id or self._web3.eth.chain_id)
+
+            gas_price = mutable_tx.pop("gasPrice", None)
+            need_dynamic_fees = (
+                "maxFeePerGas" not in mutable_tx or "maxPriorityFeePerGas" not in mutable_tx
+            )
+            if need_dynamic_fees:
+                fetched_priority_fee: int | None = None
+                try:
+                    fetched_priority_fee = int(self._web3.eth.max_priority_fee)  # type: ignore[attr-defined]
+                except (AttributeError, ValueError, TypeError):
+                    fetched_priority_fee = None
+
+                reference_fee = gas_price if gas_price is not None else self._web3.eth.gas_price
+                priority_fee = (
+                    fetched_priority_fee
+                    if fetched_priority_fee is not None
+                    else max(reference_fee // 10, 1)
+                )
+
+                max_fee = max(reference_fee, priority_fee * 2)
+
+                mutable_tx.setdefault("maxPriorityFeePerGas", priority_fee)
+                mutable_tx.setdefault("maxFeePerGas", max_fee)
 
             tx_params = cast(TxParams, mutable_tx)
             if "gas" not in mutable_tx:
@@ -648,11 +766,26 @@ class HLProtocolEVM(HLProtocolBase):
 
             tx_for_sign: dict[str, Any] = {key: value for key, value in tx_params.items()}
             signed = self._account.sign_transaction(tx_for_sign)
-            tx_hash = self._web3.eth.send_raw_transaction(signed.rawTransaction)
+            tx_hash = self._web3.eth.send_raw_transaction(signed.raw_transaction)
+            logger.info("Submitted %s transaction %s", action, tx_hash.hex())
             receipt = None
+            block_number: Any | None = None
+            status_value: Any | None = None
             if self._wait_for_receipt:
                 receipt = self._web3.eth.wait_for_transaction_receipt(
                     tx_hash, timeout=self._receipt_timeout
+                )
+                block_number = getattr(receipt, "blockNumber", None)
+                status_value = getattr(receipt, "status", None)
+                if block_number is None and isinstance(receipt, Mapping):
+                    block_number = receipt.get("blockNumber")
+                if status_value is None and isinstance(receipt, Mapping):
+                    status_value = receipt.get("status")
+                logger.info(
+                    "Transaction %s included in block %s with status %s",
+                    tx_hash.hex(),
+                    block_number,
+                    status_value,
                 )
 
             result = {
@@ -660,6 +793,7 @@ class HLProtocolEVM(HLProtocolBase):
                 "action": action,
                 "context": dict(context),
                 "receipt": self._serialise_receipt(receipt) if receipt is not None else None,
+                "block_number": block_number if receipt else None,
             }
             return result
         except ContractLogicError as exc:
@@ -693,3 +827,15 @@ class HLProtocolEVM(HLProtocolBase):
         if isinstance(receipt, bytes | bytearray | HexBytes):
             return HexBytes(receipt).hex()
         return receipt
+
+    def _summarise_param(self, value: Any) -> Any:
+        if isinstance(value, bytes | bytearray | HexBytes):
+            hexstr = HexBytes(value).hex()
+            if len(hexstr) > 70:
+                return f"bytes[{len(value)}]={hexstr[:70]}..."
+            return f"bytes[{len(value)}]={hexstr}"
+        if isinstance(value, list | tuple | set):
+            return [self._summarise_param(v) for v in value]
+        if isinstance(value, Mapping):
+            return {k: self._summarise_param(v) for k, v in value.items()}
+        return value
