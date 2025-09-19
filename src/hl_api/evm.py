@@ -6,6 +6,7 @@ import json
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
+from functools import lru_cache
 from typing import Any, cast
 from urllib import error as urlerror
 from urllib import request as urlrequest
@@ -21,12 +22,14 @@ from web3.types import ChecksumAddress, TxParams
 
 from .abi import HyperliquidStrategy_abi
 from .base import HLProtocolBase
+from .constants import Precompile
 from .evm_utils import (
     build_verification_url,
     convert_perp_price,
     convert_spot_price,
     serialise_receipt,
     summarise_param,
+    transaction_method,
 )
 from .exceptions import NetworkError, ValidationError
 from .types import (
@@ -51,14 +54,6 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
-
-COREWRITER_ADDRESS = "0x3333333333333333333333333333333333333333"
-MARK_PX_PRECOMPILE_ADDRESS = "0x0000000000000000000000000000000000000806"
-BBO_PRECOMPILE_ADDRESS = "0x000000000000000000000000000000000000080e"
-PERP_ASSET_INFO_PRECOMPILE_ADDRESS = "0x000000000000000000000000000000000000080a"
-SPOT_INFO_PRECOMPILE_ADDRESS = "0x000000000000000000000000000000000000080b"
-TOKEN_INFO_PRECOMPILE_ADDRESS = "0x000000000000000000000000000000000000080C"
-CORE_USER_EXISTS_PRECOMPILE_ADDRESS = "0x0000000000000000000000000000000000000810"
 
 DEFAULT_REQUEST_TIMEOUT = 10.0
 DEFAULT_RECEIPT_TIMEOUT = 120.0
@@ -88,7 +83,7 @@ class HLProtocolEVM(HLProtocolBase):
         self.private_key = private_key
         self.rpc_url = rpc_url
         self.strategy_address = cast(ChecksumAddress, validate_address(strategy_address))
-        self.corewriter_address = cast(ChecksumAddress, validate_address(COREWRITER_ADDRESS))
+        self.corewriter_address = cast(ChecksumAddress, validate_address(Precompile.COREWRITER))
 
         self._strategy_abi = strategy_abi
         self._verification_payload_url = verification_payload_url
@@ -111,8 +106,6 @@ class HLProtocolEVM(HLProtocolBase):
         self._token_index_by_symbol: dict[str, int] = {}
         self._hype_token_index: int | None = None
         self._metadata_loaded = False
-        self._perp_sz_decimals: dict[int, int] = {}
-        self._spot_base_sz_decimals: dict[int, int] = {}
 
         self._info_url = (
             "https://api.hyperliquid-testnet.xyz/info"
@@ -141,8 +134,19 @@ class HLProtocolEVM(HLProtocolBase):
             self._strategy_contract = contract
             self._chain_id = web3.eth.chain_id
             self._subvault_address = None
-            self._perp_sz_decimals.clear()
-            self._spot_base_sz_decimals.clear()
+            # Clear any cached metadata from previous connection
+            if hasattr(self._resolve_perp_sz_decimals, 'cache_clear'):
+                self._resolve_perp_sz_decimals.cache_clear()
+            if hasattr(self._resolve_spot_base_sz_decimals, 'cache_clear'):
+                self._resolve_spot_base_sz_decimals.cache_clear()
+
+            # Configure gas strategy for automatic gas pricing
+            try:
+                from web3.gas_strategies.rpc import rpc_gas_price_strategy
+                web3.eth.set_gas_price_strategy(rpc_gas_price_strategy)
+                logger.debug("Configured RPC gas price strategy")
+            except ImportError:
+                logger.debug("RPC gas price strategy not available, using web3.py defaults")
 
             logger.info("Connected to HyperLiquid EVM at %s", self.rpc_url)
 
@@ -169,7 +173,7 @@ class HLProtocolEVM(HLProtocolBase):
             ) from exc
 
     def disconnect(self) -> None:
-        """Clear cached web3 state."""
+        """Clear cached web3 state and invalidate caches."""
 
         self._web3 = None
         self._account = None
@@ -177,8 +181,9 @@ class HLProtocolEVM(HLProtocolBase):
         self._chain_id = None
         self._connected = False
         self._subvault_address = None
-        self._perp_sz_decimals.clear()
-        self._spot_base_sz_decimals.clear()
+        # Clear lru_cache for metadata methods
+        self._resolve_perp_sz_decimals.cache_clear()
+        self._resolve_spot_base_sz_decimals.cache_clear()
 
     def is_connected(self) -> bool:
         return self._connected and self._web3 is not None and self._strategy_contract is not None
@@ -228,7 +233,7 @@ class HLProtocolEVM(HLProtocolBase):
 
     def _core_user_exists(self, address: ChecksumAddress) -> bool:
         (exists,) = self._call_l1_read_precompile(
-            CORE_USER_EXISTS_PRECOMPILE_ADDRESS,
+            Precompile.CORE_USER_EXISTS,
             ["address"],
             [address],
             ["bool"],
@@ -367,6 +372,7 @@ class HLProtocolEVM(HLProtocolBase):
             cloid=cloid,
         )
 
+    @transaction_method("limit_order", OrderResponse)
     def limit_order(
         self,
         asset: str,
@@ -377,126 +383,57 @@ class HLProtocolEVM(HLProtocolBase):
         tif: str = "GTC",
         cloid: str | None = None,
     ) -> OrderResponse:
-        try:
-            self._ensure_connected()
-            asset_id = self._resolve_asset_id(asset)
-            formatted_price = self._format_limit_price(asset_id, limit_px)
-            price_uint = price_to_uint64(formatted_price)
-            size_uint = size_to_uint64(sz)
-            tif_uint = encode_tif(tif)
-            cloid_uint = cloid_to_uint128(cloid)
+        """Place a limit order using the decorator pattern."""
+        asset_id = self._resolve_asset_id(asset)
+        formatted_price = self._format_limit_price(asset_id, limit_px)
+        price_uint = price_to_uint64(formatted_price)
+        size_uint = size_to_uint64(sz)
+        tif_uint = encode_tif(tif)
+        cloid_uint = cloid_to_uint128(cloid)
 
-            context = {
-                "asset": asset_id,
-                "is_buy": is_buy,
-                "tif": tif_uint,
-                "cloid": cloid_uint,
-            }
-            payload = self._resolve_verification_payload("limit_order", context)
-            fn_name = "placeLimitBuyOrder" if is_buy else "placeLimitSellOrder"
-            args: Sequence[Any] = [
-                asset_id,
-                price_uint,
-                size_uint,
-                reduce_only,
-                tif_uint,
-                cloid_uint,
-                payload.as_tuple(),
-            ]
-            tx_result = self._send_contract_transaction(
-                fn_name, args, action="limit_order", context=context
-            )
-            receipt = tx_result.get("receipt")
-            status = bool(receipt is None or receipt.get("status", 0) == 1)
-            error_text = None if status else "Transaction reverted"
-            return OrderResponse(
-                success=status,
-                order_id=None,
-                cloid=cloid,
-                transaction_hash=tx_result["tx_hash"],
-                error=error_text,
-                raw_response=tx_result,
-            )
-        except ValidationError as exc:
-            logger.error("Limit order validation failed: %s", exc)
-            return OrderResponse(success=False, cloid=cloid, error=str(exc))
-        except NetworkError as exc:
-            logger.error("Limit order failed: %s", exc)
-            return OrderResponse(
-                success=False,
-                cloid=cloid,
-                error=str(exc),
-                raw_response=getattr(exc, "details", None),
-            )
-        except Exception as exc:  # pragma: no cover - operational safety
-            logger.exception("Unexpected limit order failure")
-            return OrderResponse(success=False, cloid=cloid, error=str(exc))
+        context = {
+            "asset": asset_id,
+            "is_buy": is_buy,
+            "tif": tif_uint,
+            "cloid": cloid_uint,
+        }
+        payload = self._resolve_verification_payload("limit_order", context)
+        fn_name = "placeLimitBuyOrder" if is_buy else "placeLimitSellOrder"
+        args = [
+            asset_id,
+            price_uint,
+            size_uint,
+            reduce_only,
+            tif_uint,
+            cloid_uint,
+            payload.as_tuple(),
+        ]
 
+        # Return function name, args, context, and extra response fields
+        return fn_name, args, context, {"order_id": None, "cloid": cloid}
+
+    @transaction_method("cancel_order_by_oid", CancelResponse)
     def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
-        try:
-            self._ensure_connected()
-            asset_id = self._resolve_asset_id(asset)
-            oid = int(order_id)
-            context = {"asset": asset_id, "oid": oid}
-            payload = self._resolve_verification_payload("cancel_order_by_oid", context)
-            args: Sequence[Any] = [asset_id, oid, payload.as_tuple()]
-            tx_result = self._send_contract_transaction(
-                "cancelOrderByOid", args, action="cancel_order_by_oid", context=context
-            )
-            receipt = tx_result.get("receipt")
-            status = bool(receipt is None or receipt.get("status", 0) == 1)
-            error_text = None if status else "Transaction reverted"
-            return CancelResponse(
-                success=status,
-                cancelled_orders=1 if status else 0,
-                transaction_hash=tx_result["tx_hash"],
-                error=error_text,
-                raw_response=tx_result,
-            )
-        except ValidationError as exc:
-            return CancelResponse(success=False, error=str(exc))
-        except NetworkError as exc:
-            return CancelResponse(
-                success=False,
-                error=str(exc),
-                raw_response=getattr(exc, "details", None),
-            )
-        except Exception as exc:  # pragma: no cover
-            logger.exception("Unexpected cancel-by-oid failure")
-            return CancelResponse(success=False, error=str(exc))
+        """Cancel an order by its order ID."""
+        asset_id = self._resolve_asset_id(asset)
+        oid = int(order_id)
+        context = {"asset": asset_id, "oid": oid}
+        payload = self._resolve_verification_payload("cancel_order_by_oid", context)
+        args = [asset_id, oid, payload.as_tuple()]
 
+        # Return function name, args, context, and extra response fields
+        return "cancelOrderByOid", args, context, {"cancelled_orders": 1}
+
+    @transaction_method("cancel_order_by_cloid", CancelResponse)
     def cancel_order_by_cloid(self, asset: str, cloid: str) -> CancelResponse:
-        try:
-            self._ensure_connected()
-            asset_id = self._resolve_asset_id(asset)
-            cloid_uint = cloid_to_uint128(cloid)
-            context = {"asset": asset_id, "cloid": cloid_uint}
-            payload = self._resolve_verification_payload("cancel_order_by_cloid", context)
-            args: Sequence[Any] = [asset_id, cloid_uint, payload.as_tuple()]
-            tx_result = self._send_contract_transaction(
-                "cancelOrderByCloid", args, action="cancel_order_by_cloid", context=context
-            )
-            receipt = tx_result.get("receipt")
-            status = bool(receipt is None or receipt.get("status", 0) == 1)
-            error_text = None if status else "Transaction reverted"
-            return CancelResponse(
-                success=status,
-                cancelled_orders=1 if status else 0,
-                transaction_hash=tx_result["tx_hash"],
-                error=error_text,
-                raw_response=tx_result,
-            )
-        except ValidationError as exc:
-            return CancelResponse(success=False, error=str(exc))
-        except NetworkError as exc:
-            return CancelResponse(
-                success=False,
-                error=str(exc),
-                raw_response=getattr(exc, "details", None),
-            )
-        except Exception as exc:  # pragma: no cover
-            logger.exception("Unexpected cancel-by-cloid failure")
-            return CancelResponse(success=False, error=str(exc))
+        """Cancel an order by its client order ID."""
+        asset_id = self._resolve_asset_id(asset)
+        cloid_uint = cloid_to_uint128(cloid)
+        context = {"asset": asset_id, "cloid": cloid_uint}
+        payload = self._resolve_verification_payload("cancel_order_by_cloid", context)
+        args = [asset_id, cloid_uint, payload.as_tuple()]
+
+        return "cancelOrderByCloid", args, context, {"cancelled_orders": 1}
 
     def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> TransferResponse:
         message = (
@@ -520,112 +457,48 @@ class HLProtocolEVM(HLProtocolBase):
         message = "Staking withdrawal is not supported by the HyperliquidStrategy contract"
         return StakingResponse(success=False, amount=None, error=message)
 
+    @transaction_method("spot_send", SendResponse)
     def spot_send(
         self, recipient: str, token: str, amount: float, destination: str
     ) -> SendResponse:
-        try:
-            self._ensure_connected()
-            amount_uint = size_to_uint64(amount)
-            context = {"token": token, "amount": amount_uint, "recipient": recipient}
-            payload = self._resolve_verification_payload("spot_send", context)
+        """Send spot tokens to EVM."""
+        amount_uint = size_to_uint64(amount)
+        context = {"token": token, "amount": amount_uint, "recipient": recipient}
+        payload = self._resolve_verification_payload("spot_send", context)
 
-            if self._is_hype_token(token):
-                args: Sequence[Any] = [amount_uint, payload.as_tuple()]
-                fn_name = "withdrawHypeToEvm"
-            else:
-                token_index = self._resolve_token_index(token)
-                args = [token_index, amount_uint, payload.as_tuple()]
-                fn_name = "withdrawTokenToEvm"
+        if self._is_hype_token(token):
+            args = [amount_uint, payload.as_tuple()]
+            fn_name = "withdrawHypeToEvm"
+        else:
+            token_index = self._resolve_token_index(token)
+            args = [token_index, amount_uint, payload.as_tuple()]
+            fn_name = "withdrawTokenToEvm"
 
-            tx_result = self._send_contract_transaction(
-                fn_name, args, action="spot_send", context=context
-            )
-            receipt = tx_result.get("receipt")
-            status = bool(receipt is None or receipt.get("status", 0) == 1)
-            error_text = None if status else "Transaction reverted"
-            return SendResponse(
-                success=status,
-                recipient=recipient,
-                amount=amount if status else None,
-                transaction_hash=tx_result["tx_hash"],
-                error=error_text,
-                raw_response=tx_result,
-            )
-        except ValidationError as exc:
-            return SendResponse(success=False, recipient=recipient, error=str(exc))
-        except NetworkError as exc:
-            return SendResponse(success=False, recipient=recipient, error=str(exc))
-        except Exception as exc:  # pragma: no cover
-            logger.exception("Unexpected spot_send failure")
-            return SendResponse(success=False, recipient=recipient, error=str(exc))
+        return fn_name, args, context, {"recipient": recipient, "amount": amount}
 
     def perp_send(self, recipient: str, amount: float, destination: str) -> SendResponse:
         message = "Perp collateral send is not exposed by the HyperliquidStrategy contract"
         return SendResponse(success=False, recipient=recipient, amount=None, error=message)
 
+    @transaction_method("usd_class_transfer_to_perp", TransferResponse)
     def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
-        try:
-            self._ensure_connected()
-            amount_uint = size_to_uint64(amount, 6)
-            context = {"amount": amount_uint}
-            payload = self._resolve_verification_payload("usd_class_transfer_to_perp", context)
-            args: Sequence[Any] = [amount_uint, payload.as_tuple()]
-            tx_result = self._send_contract_transaction(
-                "transferSpotToPerp", args, action="usd_class_transfer_to_perp", context=context
-            )
-            receipt = tx_result.get("receipt")
-            status = bool(receipt is None or receipt.get("status", 0) == 1)
-            error_text = None if status else "Transaction reverted"
-            return TransferResponse(
-                success=status,
-                amount=amount if status else None,
-                transaction_hash=tx_result["tx_hash"],
-                error=error_text,
-                raw_response=tx_result,
-            )
-        except ValidationError as exc:
-            return TransferResponse(success=False, error=str(exc))
-        except NetworkError as exc:
-            return TransferResponse(
-                success=False,
-                error=str(exc),
-                raw_response=getattr(exc, "details", None),
-            )
-        except Exception as exc:  # pragma: no cover
-            logger.exception("Unexpected transferSpotToPerp failure")
-            return TransferResponse(success=False, error=str(exc))
+        """Transfer USD from spot to perpetual account."""
+        amount_uint = size_to_uint64(amount, 6)
+        context = {"amount": amount_uint}
+        payload = self._resolve_verification_payload("usd_class_transfer_to_perp", context)
+        args = [amount_uint, payload.as_tuple()]
 
+        return "transferSpotToPerp", args, context, {"amount": amount}
+
+    @transaction_method("usd_class_transfer_to_spot", TransferResponse)
     def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
-        try:
-            self._ensure_connected()
-            amount_uint = size_to_uint64(amount, 6)
-            context = {"amount": amount_uint}
-            payload = self._resolve_verification_payload("usd_class_transfer_to_spot", context)
-            args: Sequence[Any] = [amount_uint, payload.as_tuple()]
-            tx_result = self._send_contract_transaction(
-                "transferPerpToSpot", args, action="usd_class_transfer_to_spot", context=context
-            )
-            receipt = tx_result.get("receipt")
-            status = bool(receipt is None or receipt.get("status", 0) == 1)
-            error_text = None if status else "Transaction reverted"
-            return TransferResponse(
-                success=status,
-                amount=amount if status else None,
-                transaction_hash=tx_result["tx_hash"],
-                error=error_text,
-                raw_response=tx_result,
-            )
-        except ValidationError as exc:
-            return TransferResponse(success=False, error=str(exc))
-        except NetworkError as exc:
-            return TransferResponse(
-                success=False,
-                error=str(exc),
-                raw_response=getattr(exc, "details", None),
-            )
-        except Exception as exc:  # pragma: no cover
-            logger.exception("Unexpected transferPerpToSpot failure")
-            return TransferResponse(success=False, error=str(exc))
+        """Transfer USD from perpetual to spot account."""
+        amount_uint = size_to_uint64(amount, 6)
+        context = {"amount": amount_uint}
+        payload = self._resolve_verification_payload("usd_class_transfer_to_spot", context)
+        args = [amount_uint, payload.as_tuple()]
+
+        return "transferPerpToSpot", args, context, {"amount": amount}
 
     def finalize_subaccount(self, subaccount: str) -> FinalizeResponse:
         message = "Subaccount finalization must be executed via CoreWriter directly"
@@ -649,7 +522,7 @@ class HLProtocolEVM(HLProtocolBase):
 
     def _call_l1_read_precompile(
         self,
-        address: str,
+        address: str | Precompile,
         input_types: Sequence[str],
         args: Sequence[Any],
         output_types: Sequence[str],
@@ -657,7 +530,9 @@ class HLProtocolEVM(HLProtocolBase):
         assert self._web3 is not None
 
         call_data = abi_encode(list(input_types), list(args)) if input_types else b""
-        destination = Web3.to_checksum_address(address)
+        # Handle both Enum and string addresses
+        addr_str = address.value if isinstance(address, Precompile) else address
+        destination = Web3.to_checksum_address(addr_str)
 
         try:
             result = self._web3.eth.call({"to": destination, "data": call_data})
@@ -685,7 +560,7 @@ class HLProtocolEVM(HLProtocolBase):
     # best bid and offer
     def _fetch_bbo_prices(self, asset_id: int) -> tuple[int, int]:
         bid_uint, ask_uint = self._call_l1_read_precompile(
-            BBO_PRECOMPILE_ADDRESS,
+            Precompile.BBO,
             ["uint32"],
             [asset_id],
             ["uint64", "uint64"],
@@ -694,7 +569,7 @@ class HLProtocolEVM(HLProtocolBase):
 
     def _read_mark_price(self, asset_id: int) -> int:
         (mark_uint,) = self._call_l1_read_precompile(
-            MARK_PX_PRECOMPILE_ADDRESS,
+            Precompile.MARK_PX,
             ["uint32"],
             [asset_id],
             ["uint64"],
@@ -827,14 +702,13 @@ class HLProtocolEVM(HLProtocolBase):
             uint64_to_price(ask_uint) if ask_uint else None,
         )
 
+    @lru_cache(maxsize=128)
     def _resolve_perp_sz_decimals(self, asset_id: int) -> int | None:
-        if asset_id in self._perp_sz_decimals:
-            return self._perp_sz_decimals[asset_id]
-
+        """Cached retrieval of perpetual size decimals for a given asset."""
         try:
             logger.debug(f"Calling perpAssetInfo precompile for asset {asset_id}")
             result = self._call_l1_read_precompile(
-                PERP_ASSET_INFO_PRECOMPILE_ADDRESS,
+                Precompile.PERP_ASSET_INFO,
                 ["uint32"],
                 [asset_id],
                 ["(string,uint32,uint8,uint8,bool)"],  # Returns a tuple
@@ -861,16 +735,14 @@ class HLProtocolEVM(HLProtocolBase):
         except (TypeError, ValueError, IndexError):
             return None
         logger.info(f"Resolved perp size decimals for asset {asset_id}: {sz_decimals}")
-        self._perp_sz_decimals[asset_id] = sz_decimals
         return sz_decimals
 
+    @lru_cache(maxsize=128)
     def _resolve_spot_base_sz_decimals(self, asset_id: int) -> int | None:
-        if asset_id in self._spot_base_sz_decimals:
-            return self._spot_base_sz_decimals[asset_id]
-
+        """Cached retrieval of spot base size decimals for a given asset."""
         try:
             spot_info = self._call_l1_read_precompile(
-                SPOT_INFO_PRECOMPILE_ADDRESS,
+                Precompile.SPOT_INFO,
                 ["uint32"],
                 [asset_id],
                 ["(string,uint64[2])"],  # Returns a tuple
@@ -899,7 +771,7 @@ class HLProtocolEVM(HLProtocolBase):
 
         try:
             token_info = self._call_l1_read_precompile(
-                TOKEN_INFO_PRECOMPILE_ADDRESS,
+                Precompile.TOKEN_INFO,
                 ["uint32"],
                 [base_token_id],
                 [
@@ -927,7 +799,6 @@ class HLProtocolEVM(HLProtocolBase):
         except (IndexError, TypeError, ValueError):
             return None
 
-        self._spot_base_sz_decimals[asset_id] = sz_decimals
         return sz_decimals
 
     def _resolve_trader_address(self) -> str:
@@ -1244,63 +1115,93 @@ class HLProtocolEVM(HLProtocolBase):
         action: str,
         context: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Send a transaction to the strategy contract using web3.py's built-in methods."""
+        """Send a transaction to the strategy contract using web3.py's built-in methods.
+
+        This simplified version leverages web3.py's automatic gas management and
+        transaction building capabilities, reducing code complexity significantly.
+        """
         assert self._web3 is not None
         assert self._account is not None
         assert self._strategy_contract is not None
 
         contract_function = getattr(self._strategy_contract.functions, function_name)(*args)
 
-        formatted_args = [summarise_param(arg) for arg in args]
-        logger.debug(
-            "Executing %s: %s.%s with args=%s",
-            action,
-            self.strategy_address[:10],
-            function_name,
-            formatted_args,
-        )
+        logger.info("Preparing transaction for action=%s function=%s", action, function_name)
 
         try:
-            transaction = contract_function.build_transaction(
-                {
-                    "from": self._account.address,
-                    "nonce": self._web3.eth.get_transaction_count(self._account.address),
-                }
-            )
+            # Build transaction - web3.py handles gas estimation and fee parameters
+            tx_params = {
+                'from': self._account.address,
+                'nonce': self._web3.eth.get_transaction_count(self._account.address),
+            }
+            transaction = contract_function.build_transaction(tx_params)
 
+            # Sign and send
             signed_tx = self._account.sign_transaction(transaction)
             tx_hash = self._web3.eth.send_raw_transaction(signed_tx.raw_transaction)
+            logger.info("Transaction sent for action=%s, hash=%s", action, tx_hash.hex())
 
-            logger.info("Transaction %s submitted: %s", action, tx_hash.hex())
-
+            # Wait for receipt if configured
             receipt = None
             if self._wait_for_receipt:
-                receipt = self._web3.eth.wait_for_transaction_receipt(
-                    tx_hash, timeout=self._receipt_timeout
-                )
-                logger.info(
-                    "Transaction %s confirmed in block %s",
-                    tx_hash.hex(),
-                    receipt.get("blockNumber"),
-                )
+                logger.debug("Waiting for transaction receipt for hash=%s", tx_hash.hex())
+                try:
+                    receipt = self._web3.eth.wait_for_transaction_receipt(
+                        tx_hash, timeout=self._receipt_timeout
+                    )
+
+                    # Check if transaction was reverted
+                    if receipt.get('status') == 0:
+                        logger.error("Transaction reverted. Action=%s, Hash=%s", action, tx_hash.hex())
+                        # Attempt to get revert reason by simulating the call
+                        try:
+                            contract_function.call(tx_params)
+                        except ContractLogicError as revert_exc:
+                            raise NetworkError(
+                                f"Transaction reverted for {action}: {revert_exc}",
+                                details={'hash': tx_hash.hex()}
+                            ) from revert_exc
+                        raise NetworkError(
+                            f"Transaction reverted for {action} with no reason.",
+                            details={'hash': tx_hash.hex()}
+                        )
+
+                    logger.info(
+                        "Transaction confirmed for action=%s, hash=%s, block=%s",
+                        action, tx_hash.hex(), receipt.get('blockNumber')
+                    )
+
+                except Exception as timeout_exc:
+                    if "timeout" in str(timeout_exc).lower():
+                        logger.error("Timeout waiting for transaction receipt for action=%s", action)
+                        # Return partial result with hash but no receipt
+                        return {
+                            'tx_hash': tx_hash.hex(),
+                            'action': action,
+                            'context': dict(context),
+                            'receipt': None,
+                            'block_number': None,
+                            'timeout': True
+                        }
+                    raise
 
             return {
-                "tx_hash": tx_hash.hex(),
-                "action": action,
-                "context": dict(context),
-                "receipt": serialise_receipt(receipt) if receipt else None,
-                "block_number": receipt.get("blockNumber") if receipt else None,
+                'tx_hash': tx_hash.hex(),
+                'action': action,
+                'context': dict(context),
+                'receipt': serialise_receipt(receipt) if receipt else None,
+                'block_number': receipt.get('blockNumber') if receipt else None,
             }
 
         except ContractLogicError as exc:
+            logger.error("Contract logic error during pre-flight check for action=%s: %s", action, exc)
             raise NetworkError(
-                f"Contract reverted during {action}", details={"error": str(exc)}
+                f"Contract pre-flight check failed for {action}: {exc}",
+                details={'function': function_name}
             ) from exc
-        except ValueError as exc:
-            message = str(exc)
-            if exc.args and isinstance(exc.args[0], Mapping):
-                message = str(exc.args[0].get("message", message))
+        except Exception as exc:
+            logger.error("Unexpected error sending transaction for action=%s: %s", action, exc, exc_info=True)
             raise NetworkError(
-                f"Failed to submit transaction for {action}: {message}",
-                details={"error": message},
+                f"Failed to send transaction for {action}",
+                details={'function': function_name}
             ) from exc

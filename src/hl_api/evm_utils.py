@@ -1,11 +1,94 @@
 from __future__ import annotations
 
+import functools
+import logging
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from typing import Any
 from urllib import parse as urlparse
 
 from hexbytes import HexBytes
+
+from .exceptions import NetworkError, ValidationError
+
+logger = logging.getLogger(__name__)
+
+
+def transaction_method(action_name: str, response_type: type):
+    """Decorator to eliminate repetitive transaction boilerplate for EVM methods.
+
+    The decorated method should return (function_name, args, context, extra_kwargs)
+    where extra_kwargs contains any response-specific fields.
+
+    Args:
+        action_name: Name of the action for logging and context
+        response_type: Response class to instantiate with results
+
+    Returns:
+        Decorator function that wraps transaction methods
+    """
+
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwargs):
+            try:
+                self._ensure_connected()
+
+                # Method returns function name, args, context, and extra response fields
+                result = func(self, *args, **kwargs)
+                if len(result) == 3:
+                    function_name, contract_args, context = result
+                    extra_fields = {}
+                else:
+                    function_name, contract_args, context, extra_fields = result
+
+                # Send transaction using centralized method
+                tx_result = self._send_contract_transaction(
+                    function_name=function_name,
+                    args=contract_args,
+                    action=action_name,
+                    context=context,
+                )
+
+                # Create appropriate response object
+                receipt = tx_result.get("receipt")
+                status = bool(receipt is None or receipt.get("status", 0) == 1)
+                error_text = None if status else tx_result.get("error", "Transaction reverted")
+
+                # Common response fields
+                response_kwargs = {
+                    "success": status,
+                    "transaction_hash": tx_result["tx_hash"],
+                    "error": error_text,
+                    "raw_response": tx_result,
+                }
+
+                # Add type-specific fields
+                response_kwargs.update(extra_fields)
+
+                return response_type(**response_kwargs)
+
+            except ValidationError as exc:
+                error_kwargs = {"success": False, "error": str(exc)}
+                error_kwargs.update(extra_fields)
+                return response_type(**error_kwargs)
+            except NetworkError as exc:
+                error_kwargs = {
+                    "success": False,
+                    "error": str(exc),
+                    "raw_response": getattr(exc, "details", None),
+                }
+                error_kwargs.update(extra_fields)
+                return response_type(**error_kwargs)
+            except Exception as exc:  # pragma: no cover
+                logger.exception(f"Unexpected {action_name} failure")
+                error_kwargs = {"success": False, "error": str(exc)}
+                error_kwargs.update(extra_fields)
+                return response_type(**error_kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 def convert_perp_price(price_uint: int, sz_decimals: int) -> Decimal:
