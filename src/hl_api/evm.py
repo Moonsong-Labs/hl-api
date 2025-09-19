@@ -8,14 +8,12 @@ from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 from typing import Any, cast
 from urllib import error as urlerror
-from urllib import parse as urlparse
 from urllib import request as urlrequest
 
 from eth_abi import decode as abi_decode
 from eth_abi import encode as abi_encode
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
-from hexbytes import HexBytes
 from web3 import HTTPProvider, Web3
 from web3.contract import Contract
 from web3.exceptions import ContractLogicError
@@ -23,6 +21,13 @@ from web3.types import ChecksumAddress, TxParams
 
 from .abi import HyperliquidStrategy_abi
 from .base import HLProtocolBase
+from .evm_utils import (
+    build_verification_url,
+    convert_perp_price,
+    convert_spot_price,
+    serialise_receipt,
+    summarise_param,
+)
 from .exceptions import NetworkError, ValidationError
 from .types import (
     ApprovalResponse,
@@ -87,7 +92,9 @@ class HLProtocolEVM(HLProtocolBase):
 
         self._strategy_abi = strategy_abi
         self._verification_payload_url = verification_payload_url
-        self._verification_payload_resolver = verification_payload_resolver
+        self._verification_payload_resolver: VerificationResolver | None = (
+            verification_payload_resolver
+        )
         self._request_timeout = request_timeout
         self._wait_for_receipt = wait_for_receipt
         self._receipt_timeout = receipt_timeout
@@ -799,18 +806,18 @@ class HLProtocolEVM(HLProtocolBase):
 
         if sz_decimals is not None:
             return (
-                self._convert_perp_price(mid_uint, sz_decimals),
-                self._convert_perp_price(bid_uint, sz_decimals) if bid_uint else None,
-                self._convert_perp_price(ask_uint, sz_decimals) if ask_uint else None,
+                convert_perp_price(mid_uint, sz_decimals),
+                convert_perp_price(bid_uint, sz_decimals) if bid_uint else None,
+                convert_perp_price(ask_uint, sz_decimals) if ask_uint else None,
             )
 
         # Try spot conversion
         base_sz_decimals = self._resolve_spot_base_sz_decimals(asset_id)
         if base_sz_decimals is not None:
             return (
-                self._convert_spot_price(mid_uint, base_sz_decimals),
-                self._convert_spot_price(bid_uint, base_sz_decimals) if bid_uint else None,
-                self._convert_spot_price(ask_uint, base_sz_decimals) if ask_uint else None,
+                convert_spot_price(mid_uint, base_sz_decimals),
+                convert_spot_price(bid_uint, base_sz_decimals) if bid_uint else None,
+                convert_spot_price(ask_uint, base_sz_decimals) if ask_uint else None,
             )
 
         # Fallback to default conversion
@@ -819,14 +826,6 @@ class HLProtocolEVM(HLProtocolBase):
             uint64_to_price(bid_uint) if bid_uint else None,
             uint64_to_price(ask_uint) if ask_uint else None,
         )
-
-    def _convert_perp_price(self, price_uint: int, sz_decimals: int) -> Decimal:
-        exponent = 6 - int(sz_decimals)
-
-        if exponent <= 0:
-            raise ValueError("Size decimals too large for perp price conversion")
-
-        return Decimal(price_uint) / (Decimal(10) ** exponent)
 
     def _resolve_perp_sz_decimals(self, asset_id: int) -> int | None:
         if asset_id in self._perp_sz_decimals:
@@ -864,12 +863,6 @@ class HLProtocolEVM(HLProtocolBase):
         logger.info(f"Resolved perp size decimals for asset {asset_id}: {sz_decimals}")
         self._perp_sz_decimals[asset_id] = sz_decimals
         return sz_decimals
-
-    def _convert_spot_price(self, price_uint: int, base_sz_decimals: int) -> Decimal:
-        exponent = 8 - int(base_sz_decimals)
-        if exponent >= 0:
-            return Decimal(price_uint) / (Decimal(10) ** exponent)
-        return Decimal(price_uint) * (Decimal(10) ** (-exponent))
 
     def _resolve_spot_base_sz_decimals(self, asset_id: int) -> int | None:
         if asset_id in self._spot_base_sz_decimals:
@@ -1153,30 +1146,12 @@ class HLProtocolEVM(HLProtocolBase):
             return VerificationPayload.from_dict(mapped)
 
         if self._verification_payload_url:
-            url = self._build_verification_url(action, context)
+            url = build_verification_url(self._verification_payload_url, action, context)
             data = self._fetch_json(url)
             mapped = dict(data) if isinstance(data, Mapping) else None
             return VerificationPayload.from_dict(mapped)
 
         return VerificationPayload.default()
-
-    def _build_verification_url(self, action: str, context: Mapping[str, Any]) -> str:
-        url = self._verification_payload_url or ""
-        if "{action}" in url:
-            url = url.format(action=action)
-
-        query_params = {
-            key: value
-            for key, value in context.items()
-            if isinstance(value, str | int | float | bool)
-        }
-        if not query_params:
-            return url
-
-        encoded = urlparse.urlencode({k: str(v) for k, v in query_params.items()})
-        parsed = urlparse.urlparse(url)
-        separator = "&" if parsed.query else "?"
-        return f"{url}{separator}{encoded}"
 
     def _is_hype_token(self, token: str | int) -> bool:
         if isinstance(token, str) and token.upper() == "HYPE":
@@ -1274,19 +1249,8 @@ class HLProtocolEVM(HLProtocolBase):
         assert self._strategy_contract is not None
 
         function = getattr(self._strategy_contract.functions, function_name)(*args)
-        formatted_args = []
-        for i, arg in enumerate(args):
-            if function_name in ["placeLimitBuyOrder", "placeLimitSellOrder"]:
-                if i == 1:  # Price parameter
-                    formatted_args.append(f"{arg} ({arg / 10**8:.8f})")
-                elif i == 2:  # Size parameter
-                    formatted_args.append(f"{arg} ({arg / 10**8:.8f})")
-                else:
-                    formatted_args.append(self._summarise_param(arg))
-            else:
-                formatted_args.append(self._summarise_param(arg))
-
-        formatted_context = {k: self._summarise_param(v) for k, v in context.items()}
+        formatted_args = [summarise_param(arg) for arg in args]
+        formatted_context = {k: summarise_param(v) for k, v in context.items()}
         logger.info(
             "Calling strategy %s.%s with args=%s context=%s",
             self.strategy_address,
@@ -1338,6 +1302,7 @@ class HLProtocolEVM(HLProtocolBase):
             signed = self._account.sign_transaction(tx_for_sign)
             tx_hash = self._web3.eth.send_raw_transaction(signed.raw_transaction)
             logger.info("Submitted %s transaction %s", action, tx_hash.hex())
+
             receipt = None
             block_number: Any | None = None
             status_value: Any | None = None
@@ -1362,7 +1327,7 @@ class HLProtocolEVM(HLProtocolBase):
                 "tx_hash": tx_hash.hex(),
                 "action": action,
                 "context": dict(context),
-                "receipt": self._serialise_receipt(receipt) if receipt is not None else None,
+                "receipt": serialise_receipt(receipt) if receipt is not None else None,
                 "block_number": block_number if receipt else None,
             }
             return result
@@ -1384,28 +1349,3 @@ class HLProtocolEVM(HLProtocolBase):
                 f"Unexpected error submitting transaction for {action}",
                 details={"error": str(exc)},
             ) from exc
-
-    def _serialise_receipt(self, receipt: Any) -> Any:
-        if receipt is None:
-            return None
-        if isinstance(receipt, Mapping):
-            return {key: self._serialise_receipt(value) for key, value in receipt.items()}
-        if isinstance(receipt, Sequence) and not isinstance(
-            receipt, str | bytes | bytearray | HexBytes
-        ):
-            return [self._serialise_receipt(item) for item in receipt]
-        if isinstance(receipt, bytes | bytearray | HexBytes):
-            return HexBytes(receipt).hex()
-        return receipt
-
-    def _summarise_param(self, value: Any) -> Any:
-        if isinstance(value, bytes | bytearray | HexBytes):
-            hexstr = HexBytes(value).hex()
-            if len(hexstr) > 70:
-                return f"bytes[{len(value)}]={hexstr[:70]}..."
-            return f"bytes[{len(value)}]={hexstr}"
-        if isinstance(value, list | tuple | set):
-            return [self._summarise_param(v) for v in value]
-        if isinstance(value, Mapping):
-            return {k: self._summarise_param(v) for k, v in value.items()}
-        return value
