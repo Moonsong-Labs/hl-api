@@ -221,3 +221,105 @@ def cloid_to_uint128(cloid: str | None) -> int:
         raise ValidationError("Cloid exceeds uint128 maximum", field="cloid", value=cloid)
 
     return cloid_int
+
+
+def format_price_for_api(price: float | Decimal, sz_decimals: int, is_perp: bool = True) -> float:
+    """Format price according to Hyperliquid API precision requirements.
+
+    Applies the following rules:
+    - Maximum 5 significant figures for the integer part
+    - For perps: Maximum (6 - sz_decimals) decimal places
+    - For spot: Maximum (8 - sz_decimals) decimal places
+    - Trailing zeros are removed as per Hyperliquid docs
+
+    Args:
+        price: The price to format
+        sz_decimals: Asset's size decimals from metadata
+        is_perp: True for perpetual contracts, False for spot
+
+    Returns:
+        Properly formatted price as float
+
+    Raises:
+        ValidationError: If price is invalid
+    """
+    if price <= 0:
+        raise ValidationError("Price must be positive", field="price", value=price)
+
+    from decimal import ROUND_HALF_UP
+
+    if not isinstance(price, Decimal):
+        price_decimal = Decimal(str(price))
+    else:
+        price_decimal = price
+
+    max_decimals = (6 - sz_decimals) if is_perp else (8 - sz_decimals)
+
+    if max_decimals >= 0:
+        quantizer = Decimal(f"1e-{max_decimals}")
+        rounded_price = price_decimal.quantize(quantizer, rounding=ROUND_HALF_UP)
+    else:
+        multiplier = Decimal(10 ** abs(max_decimals))
+        rounded_price = (price_decimal / multiplier).quantize(
+            Decimal("1"), rounding=ROUND_HALF_UP
+        ) * multiplier
+
+    # Now check the 5 significant figures constraint
+    # According to Hyperliquid docs, this applies to the whole number, not just integer part
+    price_str = str(rounded_price.normalize())
+
+    digits_only = price_str.replace(".", "").replace("-", "").lstrip("0")
+
+    if len(digits_only) > 5:
+        # We have more than 5 significant figures, need to round
+        # Find the position to round to
+        if rounded_price >= 1:
+            # For numbers >= 1, find how many digits in integer part
+            int_part = int(abs(rounded_price))
+            int_digits = len(str(int_part))
+
+            if int_digits >= 5:
+                # Round to remove decimal part and some integer digits
+                round_to = 10 ** (int_digits - 5)
+                rounded_price = (rounded_price / round_to).quantize(
+                    Decimal("1"), rounding=ROUND_HALF_UP
+                ) * round_to
+            else:
+                # Keep some decimal places
+                decimal_places = 5 - int_digits
+                # But respect the max_decimals constraint
+                decimal_places = (
+                    min(decimal_places, max_decimals) if max_decimals >= 0 else decimal_places
+                )
+                quantizer = Decimal(f"1e-{decimal_places}")
+                rounded_price = rounded_price.quantize(quantizer, rounding=ROUND_HALF_UP)
+        else:
+            # For numbers < 1, we need to handle leading zeros after decimal
+            # Find first non-zero digit position
+            for i, char in enumerate(price_str):
+                if char not in "0.-":
+                    first_sig_pos = i
+                    break
+
+            # Figure out how many decimals that is
+            decimal_pos = price_str.find(".")
+            if decimal_pos >= 0:
+                # Count zeros after decimal point
+                leading_zeros = 0
+                for char in price_str[decimal_pos + 1 :]:
+                    if char == "0":
+                        leading_zeros += 1
+                    else:
+                        break
+
+                # We want 5 significant figures total
+                decimal_places = leading_zeros + 5
+                # But respect the max_decimals constraint
+                decimal_places = (
+                    min(decimal_places, max_decimals) if max_decimals >= 0 else decimal_places
+                )
+                quantizer = Decimal("1e-{}".format(decimal_places))
+                rounded_price = rounded_price.quantize(quantizer, rounding=ROUND_HALF_UP)
+
+    # Remove trailing zeros and return as float
+    return float(rounded_price.normalize())

@@ -38,6 +38,7 @@ from .types import (
 from .utils import (
     cloid_to_uint128,
     encode_tif,
+    format_price_for_api,
     price_to_uint64,
     size_to_uint64,
     uint64_to_price,
@@ -206,7 +207,7 @@ class HLProtocolEVM(HLProtocolBase):
     ) -> OrderResponse:
         try:
             mid_price, bid_price, ask_price = self._market_price_context(asset)
-            limit_price = self._compute_slippage_price(float(mid_price), is_buy, slippage)
+            limit_price = self._compute_slippage_price(asset, float(mid_price), is_buy, slippage)
         except (NetworkError, ValidationError) as exc:
             logger.error("Failed to compute market order price for %s: %s", asset, exc)
             return OrderResponse(success=False, cloid=cloid, error=str(exc))
@@ -293,7 +294,7 @@ class HLProtocolEVM(HLProtocolBase):
 
         try:
             mid_price = self.get_market_price(asset)
-            limit_price = self._compute_slippage_price(mid_price, is_buy, slippage)
+            limit_price = self._compute_slippage_price(asset, mid_price, is_buy, slippage)
         except (NetworkError, ValidationError) as exc:
             logger.error("Failed to compute close order price for %s: %s", asset, exc)
             return OrderResponse(success=False, cloid=cloid, error=str(exc))
@@ -641,7 +642,9 @@ class HLProtocolEVM(HLProtocolBase):
         )
         return int(mark_uint)
 
-    def _compute_slippage_price(self, mid_price: float, is_buy: bool, slippage: float) -> float:
+    def _compute_slippage_price(
+        self, asset: str, mid_price: float, is_buy: bool, slippage: float
+    ) -> float:
         if mid_price <= 0:
             raise ValidationError("Mid price must be positive", field="mid_price", value=mid_price)
 
@@ -665,7 +668,20 @@ class HLProtocolEVM(HLProtocolBase):
                 value=slippage,
             )
 
-        return float(base * multiplier)
+        raw_price = float(base * multiplier)
+
+        asset_id = self._resolve_asset_id(asset)
+        sz_decimals = self._resolve_perp_sz_decimals(asset_id)
+
+        if sz_decimals is None:
+            logger.error(f"Could not fetch sz_decimals for asset {asset}, using default 3")
+            raise ValidationError(
+                "Could not resolve asset metadata",
+                field="asset",
+                value=asset,
+            )
+
+        return format_price_for_api(raw_price, sz_decimals, is_perp=True)
 
     def _market_price_context(self, asset: str) -> tuple[Decimal, Decimal | None, Decimal | None]:
         """Get market price context with bid, ask, and mid prices.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from decimal import Decimal
 
 from dotenv import load_dotenv
@@ -18,7 +19,7 @@ logging.basicConfig(
 )
 
 ASSET_SYMBOL = "ETH"
-DEFAULT_SLIPPAGE = 0.05  # 5%
+DEFAULT_SLIPPAGE = 0.005  # 0.5%
 SIZE = 0.01  # 0.01 ETH
 
 
@@ -66,6 +67,9 @@ def main() -> None:
             return
 
         logging.info("Market buy complete; response: %s", buy_response.raw_response)
+
+        # sleep 5 seconds to ensure order is processed before closing
+        time.sleep(5)
 
         logging.info("Submitting market sell to flatten position")
         close_response = client.market_close_position(
