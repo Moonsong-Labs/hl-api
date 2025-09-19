@@ -229,6 +229,7 @@ def test_common_crypto_pairs():
     pairs = [
         # (symbol, price, sz_decimals, expected)
         ("BTC", 45000.00, 5, 45000, "BTC at 45k"),
+        ("BTC", 145000.55, 5, 145000, "BTC at 145k"),
         ("BTC", 43210.5, 5, 43211, "BTC with decimal"),
         ("ETH", 2500.50, 4, 2500.5, "ETH with 1 decimal"),
         ("ETH", 2345.67, 4, 2345.7, "ETH rounded to 1 decimal"),

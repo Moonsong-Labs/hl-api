@@ -69,6 +69,7 @@ def main() -> None:
         logging.info("Market buy complete; response: %s", buy_response.raw_response)
 
         # sleep 5 seconds to ensure order is processed before closing
+        logging.info("Waiting 5 seconds before submitting market sell...")
         time.sleep(5)
 
         logging.info("Submitting market sell to flatten position")

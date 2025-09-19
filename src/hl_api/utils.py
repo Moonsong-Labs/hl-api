@@ -1,7 +1,7 @@
 """Utility functions for HyperLiquid Unified API."""
 
 import random
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 
 from web3 import Web3
 
@@ -149,8 +149,7 @@ def generate_cloid() -> str:
     Returns:
         Random cloid as hex string (0x prefixed) for uint128
     """
-    # Generate a random 128-bit integer
-    # Using 16 bytes (128 bits) of randomness
+    # Draw a random 128-bit integer using Python's RNG
     cloid_int = random.randint(1, 2**128 - 1)
     return f"0x{cloid_int:032x}"
 
@@ -205,7 +204,6 @@ def cloid_to_uint128(cloid: str | None) -> int:
     if cloid is None:
         return 0
 
-    # Convert string to int (handle hex strings too)
     try:
         if isinstance(cloid, str) and cloid.startswith("0x"):
             cloid_int = int(cloid, 16)
@@ -227,10 +225,10 @@ def format_price_for_api(price: float | Decimal, sz_decimals: int, is_perp: bool
     """Format price according to Hyperliquid API precision requirements.
 
     Applies the following rules:
-    - Maximum 5 significant figures for the integer part
+    - Maximum 5 significant figures
     - For perps: Maximum (6 - sz_decimals) decimal places
     - For spot: Maximum (8 - sz_decimals) decimal places
-    - Trailing zeros are removed as per Hyperliquid docs
+    - Trailing zeros are removed
 
     Args:
         price: The price to format
@@ -246,80 +244,32 @@ def format_price_for_api(price: float | Decimal, sz_decimals: int, is_perp: bool
     if price <= 0:
         raise ValidationError("Price must be positive", field="price", value=price)
 
-    from decimal import ROUND_HALF_UP
-
-    if not isinstance(price, Decimal):
-        price_decimal = Decimal(str(price))
-    else:
-        price_decimal = price
+    price_d = price if isinstance(price, Decimal) else Decimal(str(price))
 
     max_decimals = (6 - sz_decimals) if is_perp else (8 - sz_decimals)
+    max_sig_figs = 5
+
+    abs_price = price_d.copy_abs()
+    exponent_sig = abs_price.adjusted() - (max_sig_figs - 1)
 
     if max_decimals >= 0:
-        quantizer = Decimal(f"1e-{max_decimals}")
-        rounded_price = price_decimal.quantize(quantizer, rounding=ROUND_HALF_UP)
+        leading_zeros = max(0, -abs_price.adjusted() - 1)
+        allowed_decimals = max_decimals + leading_zeros + (1 if abs_price < 1 else 0)
+        exponent_dec = -allowed_decimals
     else:
-        multiplier = Decimal(10 ** abs(max_decimals))
-        rounded_price = (price_decimal / multiplier).quantize(
-            Decimal("1"), rounding=ROUND_HALF_UP
-        ) * multiplier
+        exponent_dec = -max_decimals
 
-    # Now check the 5 significant figures constraint
-    # According to Hyperliquid docs, this applies to the whole number, not just integer part
-    price_str = str(rounded_price.normalize())
+    final_exponent = max(exponent_sig, exponent_dec)
 
-    digits_only = price_str.replace(".", "").replace("-", "").lstrip("0")
+    with localcontext() as ctx:
+        ctx.rounding = ROUND_HALF_UP
+        ctx.prec = max(
+            28,
+            abs(price_d.adjusted()) + max_sig_figs + 4,
+            abs(exponent_dec) + max_sig_figs + 4,
+        )
 
-    if len(digits_only) > 5:
-        # We have more than 5 significant figures, need to round
-        # Find the position to round to
-        if rounded_price >= 1:
-            # For numbers >= 1, find how many digits in integer part
-            int_part = int(abs(rounded_price))
-            int_digits = len(str(int_part))
+        quantizer = Decimal(1).scaleb(final_exponent)
+        price_d = price_d.quantize(quantizer, rounding=ROUND_HALF_UP)
 
-            if int_digits >= 5:
-                # Round to remove decimal part and some integer digits
-                round_to = 10 ** (int_digits - 5)
-                rounded_price = (rounded_price / round_to).quantize(
-                    Decimal("1"), rounding=ROUND_HALF_UP
-                ) * round_to
-            else:
-                # Keep some decimal places
-                decimal_places = 5 - int_digits
-                # But respect the max_decimals constraint
-                decimal_places = (
-                    min(decimal_places, max_decimals) if max_decimals >= 0 else decimal_places
-                )
-                quantizer = Decimal(f"1e-{decimal_places}")
-                rounded_price = rounded_price.quantize(quantizer, rounding=ROUND_HALF_UP)
-        else:
-            # For numbers < 1, we need to handle leading zeros after decimal
-            # Find first non-zero digit position
-            for i, char in enumerate(price_str):
-                if char not in "0.-":
-                    first_sig_pos = i
-                    break
-
-            # Figure out how many decimals that is
-            decimal_pos = price_str.find(".")
-            if decimal_pos >= 0:
-                # Count zeros after decimal point
-                leading_zeros = 0
-                for char in price_str[decimal_pos + 1 :]:
-                    if char == "0":
-                        leading_zeros += 1
-                    else:
-                        break
-
-                # We want 5 significant figures total
-                decimal_places = leading_zeros + 5
-                # But respect the max_decimals constraint
-                decimal_places = (
-                    min(decimal_places, max_decimals) if max_decimals >= 0 else decimal_places
-                )
-                quantizer = Decimal("1e-{}".format(decimal_places))
-                rounded_price = rounded_price.quantize(quantizer, rounding=ROUND_HALF_UP)
-
-    # Remove trailing zeros and return as float
-    return float(rounded_price.normalize())
+    return float(price_d)
