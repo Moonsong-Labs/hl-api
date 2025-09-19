@@ -6,7 +6,6 @@ https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/tick-and-lot-
 """
 
 import pytest
-from decimal import Decimal
 
 from hl_api.utils import format_price_for_api
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Integration test for market order price precision."""
 
-import sys
 import os
-from unittest.mock import MagicMock, patch
+import sys
 from decimal import Decimal
+from typing import TypedDict
+from unittest.mock import MagicMock
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,10 +31,21 @@ def test_market_order_price_formatting():
     print("Testing Market Order Price Formatting")
     print("=" * 60)
 
+    class MarketOrderTestCase(TypedDict):
+        asset: str
+        asset_id: int
+        mid_price: float
+        is_buy: bool
+        slippage: float
+        sz_decimals: int
+        expected_price: float
+        description: str
+
     # Test cases with different assets and prices
-    test_cases = [
+    test_cases: list[MarketOrderTestCase] = [
         {
             "asset": "ETH",
+            "asset_id": 4,
             "mid_price": 2500.123456,
             "is_buy": True,
             "slippage": 0.05,
@@ -43,6 +55,7 @@ def test_market_order_price_formatting():
         },
         {
             "asset": "ETH",
+            "asset_id": 4,
             "mid_price": 2500.123456,
             "is_buy": False,
             "slippage": 0.05,
@@ -52,15 +65,17 @@ def test_market_order_price_formatting():
         },
         {
             "asset": "BTC",
+            "asset_id": 1,
             "mid_price": 45678.987654,
             "is_buy": True,
             "slippage": 0.03,
             "sz_decimals": 5,
-            "expected_price": 47049,  # 45678.987654 * 1.03 = 47049.4 -> 47049 (1 decimal for BTC, but 5 sig figs)
+            "expected_price": 47049.0,  # 45678.987654 * 1.03 = 47049.4 -> 47049 (1 decimal for BTC, but 5 sig figs)
             "description": "BTC buy with 3% slippage",
         },
         {
             "asset": "SOL",
+            "asset_id": 2,
             "mid_price": 123.456789,
             "is_buy": True,
             "slippage": 0.10,
@@ -72,10 +87,8 @@ def test_market_order_price_formatting():
 
     for test in test_cases:
         # Configure mocks for this test
-        api._resolve_asset_id.return_value = test[
-            "sz_decimals"
-        ]  # Just using sz_decimals as asset ID for simplicity
-        api._resolve_perp_sz_decimals.return_value = test["sz_decimals"]
+        api._resolve_asset_id = MagicMock(return_value=test["asset_id"])
+        api._resolve_perp_sz_decimals = MagicMock(return_value=test["sz_decimals"])
 
         # Call the method
         formatted_price = api._compute_slippage_price(
