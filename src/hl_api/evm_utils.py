@@ -4,7 +4,7 @@ import functools
 import logging
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
-from typing import Any
+from typing import Any, Callable, TypeVar, cast
 from urllib import parse as urlparse
 
 from hexbytes import HexBytes
@@ -14,7 +14,9 @@ from .exceptions import NetworkError, ValidationError
 logger = logging.getLogger(__name__)
 
 
-def transaction_method(action_name: str, response_type: type):
+F = TypeVar('F', bound=Callable[..., Any])
+
+def transaction_method(action_name: str, response_type: type) -> Callable[[F], F]:
     """Decorator to eliminate repetitive transaction boilerplate for EVM methods.
 
     The decorated method should return (function_name, args, context, extra_kwargs)
@@ -28,9 +30,10 @@ def transaction_method(action_name: str, response_type: type):
         Decorator function that wraps transaction methods
     """
 
-    def decorator(func):
+    def decorator(func: F) -> F:
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
+            extra_fields = {}  # Initialize early to avoid unbound variable issues
             try:
                 self._ensure_connected()
 
@@ -86,7 +89,7 @@ def transaction_method(action_name: str, response_type: type):
                 error_kwargs.update(extra_fields)
                 return response_type(**error_kwargs)
 
-        return wrapper
+        return cast(F, wrapper)
 
     return decorator
 

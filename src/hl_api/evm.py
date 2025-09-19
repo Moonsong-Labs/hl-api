@@ -7,7 +7,7 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 from functools import lru_cache
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
@@ -410,7 +410,7 @@ class HLProtocolEVM(HLProtocolBase):
         ]
 
         # Return function name, args, context, and extra response fields
-        return fn_name, args, context, {"order_id": None, "cloid": cloid}
+        return fn_name, args, context, {"order_id": None, "cloid": cloid}  # type: ignore[return-value]
 
     @transaction_method("cancel_order_by_oid", CancelResponse)
     def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
@@ -422,7 +422,7 @@ class HLProtocolEVM(HLProtocolBase):
         args = [asset_id, oid, payload.as_tuple()]
 
         # Return function name, args, context, and extra response fields
-        return "cancelOrderByOid", args, context, {"cancelled_orders": 1}
+        return "cancelOrderByOid", args, context, {"cancelled_orders": 1}  # type: ignore[return-value]
 
     @transaction_method("cancel_order_by_cloid", CancelResponse)
     def cancel_order_by_cloid(self, asset: str, cloid: str) -> CancelResponse:
@@ -433,7 +433,7 @@ class HLProtocolEVM(HLProtocolBase):
         payload = self._resolve_verification_payload("cancel_order_by_cloid", context)
         args = [asset_id, cloid_uint, payload.as_tuple()]
 
-        return "cancelOrderByCloid", args, context, {"cancelled_orders": 1}
+        return "cancelOrderByCloid", args, context, {"cancelled_orders": 1}  # type: ignore[return-value]
 
     def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> TransferResponse:
         message = (
@@ -474,7 +474,7 @@ class HLProtocolEVM(HLProtocolBase):
             args = [token_index, amount_uint, payload.as_tuple()]
             fn_name = "withdrawTokenToEvm"
 
-        return fn_name, args, context, {"recipient": recipient, "amount": amount}
+        return fn_name, args, context, {"recipient": recipient, "amount": amount}  # type: ignore[return-value]
 
     def perp_send(self, recipient: str, amount: float, destination: str) -> SendResponse:
         message = "Perp collateral send is not exposed by the HyperliquidStrategy contract"
@@ -488,7 +488,7 @@ class HLProtocolEVM(HLProtocolBase):
         payload = self._resolve_verification_payload("usd_class_transfer_to_perp", context)
         args = [amount_uint, payload.as_tuple()]
 
-        return "transferSpotToPerp", args, context, {"amount": amount}
+        return "transferSpotToPerp", args, context, {"amount": amount}  # type: ignore[return-value]
 
     @transaction_method("usd_class_transfer_to_spot", TransferResponse)
     def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
@@ -498,7 +498,7 @@ class HLProtocolEVM(HLProtocolBase):
         payload = self._resolve_verification_payload("usd_class_transfer_to_spot", context)
         args = [amount_uint, payload.as_tuple()]
 
-        return "transferPerpToSpot", args, context, {"amount": amount}
+        return "transferPerpToSpot", args, context, {"amount": amount}  # type: ignore[return-value]
 
     def finalize_subaccount(self, subaccount: str) -> FinalizeResponse:
         message = "Subaccount finalization must be executed via CoreWriter directly"
