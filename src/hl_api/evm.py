@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, cast
-from urllib import error as urlerror
-from urllib import request as urlrequest
+from typing import Any, cast
 
+import requests
 from eth_abi import decode as abi_decode
 from eth_abi import encode as abi_encode
 from eth_account import Account
@@ -18,7 +16,7 @@ from eth_account.signers.local import LocalAccount
 from web3 import HTTPProvider, Web3
 from web3.contract import Contract
 from web3.exceptions import ContractLogicError
-from web3.types import ChecksumAddress, TxParams
+from web3.types import ChecksumAddress
 
 from .abi import HyperliquidStrategy_abi
 from .base import HLProtocolBase
@@ -28,7 +26,6 @@ from .evm_utils import (
     convert_perp_price,
     convert_spot_price,
     serialise_receipt,
-    summarise_param,
     transaction_method,
 )
 from .exceptions import NetworkError, ValidationError
@@ -102,6 +99,9 @@ class HLProtocolEVM(HLProtocolBase):
         self._connected = False
         self._subvault_address: ChecksumAddress | None = None
 
+        self._session = requests.Session()
+        self._session.headers.update({"User-Agent": "hl-api/evm"})
+
         self._asset_by_symbol: dict[str, int] = {}
         self._token_index_by_symbol: dict[str, int] = {}
         self._hype_token_index: int | None = None
@@ -135,14 +135,15 @@ class HLProtocolEVM(HLProtocolBase):
             self._chain_id = web3.eth.chain_id
             self._subvault_address = None
             # Clear any cached metadata from previous connection
-            if hasattr(self._resolve_perp_sz_decimals, 'cache_clear'):
+            if hasattr(self._resolve_perp_sz_decimals, "cache_clear"):
                 self._resolve_perp_sz_decimals.cache_clear()
-            if hasattr(self._resolve_spot_base_sz_decimals, 'cache_clear'):
+            if hasattr(self._resolve_spot_base_sz_decimals, "cache_clear"):
                 self._resolve_spot_base_sz_decimals.cache_clear()
 
             # Configure gas strategy for automatic gas pricing
             try:
                 from web3.gas_strategies.rpc import rpc_gas_price_strategy
+
                 web3.eth.set_gas_price_strategy(rpc_gas_price_strategy)
                 logger.debug("Configured RPC gas price strategy")
             except ImportError:
@@ -409,7 +410,6 @@ class HLProtocolEVM(HLProtocolBase):
             payload.as_tuple(),
         ]
 
-        # Return function name, args, context, and extra response fields
         return fn_name, args, context, {"order_id": None, "cloid": cloid}  # type: ignore[return-value]
 
     @transaction_method("cancel_order_by_oid", CancelResponse)
@@ -421,7 +421,6 @@ class HLProtocolEVM(HLProtocolBase):
         payload = self._resolve_verification_payload("cancel_order_by_oid", context)
         args = [asset_id, oid, payload.as_tuple()]
 
-        # Return function name, args, context, and extra response fields
         return "cancelOrderByOid", args, context, {"cancelled_orders": 1}  # type: ignore[return-value]
 
     @transaction_method("cancel_order_by_cloid", CancelResponse)
@@ -530,7 +529,6 @@ class HLProtocolEVM(HLProtocolBase):
         assert self._web3 is not None
 
         call_data = abi_encode(list(input_types), list(args)) if input_types else b""
-        # Handle both Enum and string addresses
         addr_str = address.value if isinstance(address, Precompile) else address
         destination = Web3.to_checksum_address(addr_str)
 
@@ -747,7 +745,6 @@ class HLProtocolEVM(HLProtocolBase):
                 [asset_id],
                 ["(string,uint64[2])"],  # Returns a tuple
             )
-            # Unpack the tuple if needed
             if spot_info and len(spot_info) > 0:
                 spot_info = spot_info[0]  # Extract the inner tuple
         except NetworkError:
@@ -1046,66 +1043,29 @@ class HLProtocolEVM(HLProtocolBase):
             logger.debug("Failed to coerce value '%s' to int", value)
             return None
 
-    def _fetch_json(self, url: str | None) -> Any:
+    def _request_json(
+        self,
+        method: str,
+        url: str | None,
+        payload: Mapping[str, Any] | None = None,
+    ) -> Any:
         if not url:
-            raise NetworkError("No URL provided for JSON fetch")
+            raise ValueError("No URL provided for HTTP request")
 
-        request = urlrequest.Request(url, headers={"User-Agent": "hl-api/evm"})
-        try:
-            with urlrequest.urlopen(request, timeout=self._request_timeout) as response:
-                body = response.read()
-        except urlerror.HTTPError as exc:
-            raise NetworkError(
-                f"HTTP error {exc.code} while fetching {url}",
-                endpoint=url,
-                status_code=exc.code,
-            ) from exc
-        except urlerror.URLError as exc:
-            raise NetworkError(f"Failed to fetch {url}: {exc.reason}", endpoint=url) from exc
-
-        try:
-            text = body.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise NetworkError("Response was not valid UTF-8", endpoint=url) from exc
-
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise NetworkError(
-                "Failed to decode JSON response", endpoint=url, details={"error": str(exc)}
-            ) from exc
-
-    def _post_json(self, url: str, payload: Mapping[str, Any]) -> Any:
-        data = json.dumps(payload).encode("utf-8")
-        request = urlrequest.Request(
+        response = self._session.request(
+            method,
             url,
-            data=data,
-            headers={"Content-Type": "application/json", "User-Agent": "hl-api/evm"},
-            method="POST",
+            json=payload,
+            timeout=self._request_timeout,
         )
-        try:
-            with urlrequest.urlopen(request, timeout=self._request_timeout) as response:
-                body = response.read()
-        except urlerror.HTTPError as exc:
-            raise NetworkError(
-                f"HTTP error {exc.code} while posting to {url}",
-                endpoint=url,
-                status_code=exc.code,
-            ) from exc
-        except urlerror.URLError as exc:
-            raise NetworkError(f"Failed to post to {url}: {exc.reason}", endpoint=url) from exc
+        response.raise_for_status()
+        return response.json()
 
-        try:
-            text = body.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise NetworkError("Response was not valid UTF-8", endpoint=url) from exc
+    def _fetch_json(self, url: str | None) -> Any:
+        return self._request_json("GET", url)
 
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise NetworkError(
-                "Failed to decode JSON response", endpoint=url, details={"error": str(exc)}
-            ) from exc
+    def _post_json(self, url: str | None, payload: Mapping[str, Any]) -> Any:
+        return self._request_json("POST", url, payload)
 
     def _send_contract_transaction(
         self,
@@ -1115,11 +1075,7 @@ class HLProtocolEVM(HLProtocolBase):
         action: str,
         context: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Send a transaction to the strategy contract using web3.py's built-in methods.
-
-        This simplified version leverages web3.py's automatic gas management and
-        transaction building capabilities, reducing code complexity significantly.
-        """
+        """Send a transaction to the strategy contract using web3.py's built-in methods."""
         assert self._web3 is not None
         assert self._account is not None
         assert self._strategy_contract is not None
@@ -1129,19 +1085,16 @@ class HLProtocolEVM(HLProtocolBase):
         logger.info("Preparing transaction for action=%s function=%s", action, function_name)
 
         try:
-            # Build transaction - web3.py handles gas estimation and fee parameters
             tx_params = {
-                'from': self._account.address,
-                'nonce': self._web3.eth.get_transaction_count(self._account.address),
+                "from": self._account.address,
+                "nonce": self._web3.eth.get_transaction_count(self._account.address),
             }
             transaction = contract_function.build_transaction(tx_params)
 
-            # Sign and send
             signed_tx = self._account.sign_transaction(transaction)
             tx_hash = self._web3.eth.send_raw_transaction(signed_tx.raw_transaction)
             logger.info("Transaction sent for action=%s, hash=%s", action, tx_hash.hex())
 
-            # Wait for receipt if configured
             receipt = None
             if self._wait_for_receipt:
                 logger.debug("Waiting for transaction receipt for hash=%s", tx_hash.hex())
@@ -1150,58 +1103,64 @@ class HLProtocolEVM(HLProtocolBase):
                         tx_hash, timeout=self._receipt_timeout
                     )
 
-                    # Check if transaction was reverted
-                    if receipt.get('status') == 0:
-                        logger.error("Transaction reverted. Action=%s, Hash=%s", action, tx_hash.hex())
-                        # Attempt to get revert reason by simulating the call
+                    if receipt.get("status") == 0:
+                        logger.error(
+                            "Transaction reverted. Action=%s, Hash=%s", action, tx_hash.hex()
+                        )
                         try:
                             contract_function.call(tx_params)
                         except ContractLogicError as revert_exc:
                             raise NetworkError(
                                 f"Transaction reverted for {action}: {revert_exc}",
-                                details={'hash': tx_hash.hex()}
+                                details={"hash": tx_hash.hex()},
                             ) from revert_exc
                         raise NetworkError(
                             f"Transaction reverted for {action} with no reason.",
-                            details={'hash': tx_hash.hex()}
+                            details={"hash": tx_hash.hex()},
                         )
 
                     logger.info(
                         "Transaction confirmed for action=%s, hash=%s, block=%s",
-                        action, tx_hash.hex(), receipt.get('blockNumber')
+                        action,
+                        tx_hash.hex(),
+                        receipt.get("blockNumber"),
                     )
 
                 except Exception as timeout_exc:
                     if "timeout" in str(timeout_exc).lower():
-                        logger.error("Timeout waiting for transaction receipt for action=%s", action)
-                        # Return partial result with hash but no receipt
+                        logger.error(
+                            "Timeout waiting for transaction receipt for action=%s", action
+                        )
                         return {
-                            'tx_hash': tx_hash.hex(),
-                            'action': action,
-                            'context': dict(context),
-                            'receipt': None,
-                            'block_number': None,
-                            'timeout': True
+                            "tx_hash": tx_hash.hex(),
+                            "action": action,
+                            "context": dict(context),
+                            "receipt": None,
+                            "block_number": None,
+                            "timeout": True,
                         }
                     raise
 
             return {
-                'tx_hash': tx_hash.hex(),
-                'action': action,
-                'context': dict(context),
-                'receipt': serialise_receipt(receipt) if receipt else None,
-                'block_number': receipt.get('blockNumber') if receipt else None,
+                "tx_hash": tx_hash.hex(),
+                "action": action,
+                "context": dict(context),
+                "receipt": serialise_receipt(receipt) if receipt else None,
+                "block_number": receipt.get("blockNumber") if receipt else None,
             }
 
         except ContractLogicError as exc:
-            logger.error("Contract logic error during pre-flight check for action=%s: %s", action, exc)
+            logger.error(
+                "Contract logic error during pre-flight check for action=%s: %s", action, exc
+            )
             raise NetworkError(
                 f"Contract pre-flight check failed for {action}: {exc}",
-                details={'function': function_name}
+                details={"function": function_name},
             ) from exc
         except Exception as exc:
-            logger.error("Unexpected error sending transaction for action=%s: %s", action, exc, exc_info=True)
+            logger.error(
+                "Unexpected error sending transaction for action=%s: %s", action, exc, exc_info=True
+            )
             raise NetworkError(
-                f"Failed to send transaction for {action}",
-                details={'function': function_name}
+                f"Failed to send transaction for {action}", details={"function": function_name}
             ) from exc

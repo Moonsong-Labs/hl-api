@@ -719,6 +719,7 @@ dependencies = [
     { name = "pyrefly" },
     { name = "pytest" },
     { name = "python-dotenv" },
+    { name = "requests" },
     { name = "ruff" },
     { name = "web3" },
 ]
@@ -740,6 +741,7 @@ requires-dist = [
     { name = "pytest", specifier = ">=8.4.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "ruff", specifier = ">=0.12.11" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1" },
     { name = "web3", specifier = ">=7.13.0" },

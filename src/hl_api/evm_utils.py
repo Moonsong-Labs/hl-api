@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import functools
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, TypeVar, cast
 from urllib import parse as urlparse
 
 from hexbytes import HexBytes
@@ -14,7 +14,8 @@ from .exceptions import NetworkError, ValidationError
 logger = logging.getLogger(__name__)
 
 
-F = TypeVar('F', bound=Callable[..., Any])
+F = TypeVar("F", bound=Callable[..., Any])
+
 
 def transaction_method(action_name: str, response_type: type) -> Callable[[F], F]:
     """Decorator to eliminate repetitive transaction boilerplate for EVM methods.
@@ -33,11 +34,10 @@ def transaction_method(action_name: str, response_type: type) -> Callable[[F], F
     def decorator(func: F) -> F:
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
-            extra_fields = {}  # Initialize early to avoid unbound variable issues
+            extra_fields = {}
             try:
                 self._ensure_connected()
 
-                # Method returns function name, args, context, and extra response fields
                 result = func(self, *args, **kwargs)
                 if len(result) == 3:
                     function_name, contract_args, context = result
@@ -45,7 +45,6 @@ def transaction_method(action_name: str, response_type: type) -> Callable[[F], F
                 else:
                     function_name, contract_args, context, extra_fields = result
 
-                # Send transaction using centralized method
                 tx_result = self._send_contract_transaction(
                     function_name=function_name,
                     args=contract_args,
@@ -53,12 +52,10 @@ def transaction_method(action_name: str, response_type: type) -> Callable[[F], F
                     context=context,
                 )
 
-                # Create appropriate response object
                 receipt = tx_result.get("receipt")
                 status = bool(receipt is None or receipt.get("status", 0) == 1)
                 error_text = None if status else tx_result.get("error", "Transaction reverted")
 
-                # Common response fields
                 response_kwargs = {
                     "success": status,
                     "transaction_hash": tx_result["tx_hash"],
@@ -66,7 +63,6 @@ def transaction_method(action_name: str, response_type: type) -> Callable[[F], F
                     "raw_response": tx_result,
                 }
 
-                # Add type-specific fields
                 response_kwargs.update(extra_fields)
 
                 return response_type(**response_kwargs)
