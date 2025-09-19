@@ -476,12 +476,10 @@ class HLProtocolCore(HLProtocolBase):
                 "Exchange client unexpectedly None after connection check"
             )
 
-            # Prepare cloid if provided
             cloid_obj = None
             if cloid:
                 cloid_obj = Cloid.from_str(cloid)
 
-            # Use SDK's market_open method
             result = self._exchange.market_open(
                 name=asset, is_buy=is_buy, sz=sz, slippage=slippage, cloid=cloid_obj
             )

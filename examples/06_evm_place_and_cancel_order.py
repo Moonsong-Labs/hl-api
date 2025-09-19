@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 
 from dotenv import load_dotenv
 
@@ -22,22 +21,17 @@ LIMIT_PRICE = "2000.0"
 SIZE = "0.01"
 
 
-def ensure_env_var(name: str) -> str:
-    """Fetch an environment variable or abort with a helpful message."""
-
-    value = os.getenv(name)
-    if not value:
-        print(f"Environment variable {name} is required for this example.", file=sys.stderr)
-        sys.exit(1)
-    return value
-
-
 def main() -> None:
     """Place and cancel a limit order on HyperLiquid EVM via strategy contract."""
 
-    private_key = ensure_env_var("PRIVATE_KEY")
+    private_key = os.getenv("PRIVATE_KEY")
+    if not private_key:
+        raise ValueError("PRIVATE_KEY not found in environment variables")
+
     rpc_url = os.getenv("HYPER_EVM_RPC", "https://rpc.hyperliquid-testnet.xyz/evm")
-    strategy_address = ensure_env_var("HYPERLIQUID_STRATEGY")
+    strategy_address = os.getenv("HYPERLIQUID_STRATEGY")
+    if not strategy_address:
+        raise ValueError("HYPERLIQUID_STRATEGY not found in environment variables")
 
     hl = HLProtocolEVM(
         private_key=private_key,
