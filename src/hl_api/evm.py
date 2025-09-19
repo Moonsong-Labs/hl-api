@@ -322,7 +322,8 @@ class HLProtocolEVM(HLProtocolBase):
         try:
             self._ensure_connected()
             asset_id = self._resolve_asset_id(asset)
-            price_uint = price_to_uint64(limit_px)
+            formatted_price = self._format_limit_price(asset_id, limit_px)
+            price_uint = price_to_uint64(formatted_price)
             size_uint = size_to_uint64(sz)
             tif_uint = encode_tif(tif)
             cloid_uint = cloid_to_uint128(cloid)
@@ -682,6 +683,23 @@ class HLProtocolEVM(HLProtocolBase):
             )
 
         return format_price_for_api(raw_price, sz_decimals, is_perp=True)
+
+    def _format_limit_price(self, asset_id: int, limit_px: float | Decimal) -> float | Decimal:
+        """Format a limit price using asset metadata when available."""
+
+        sz_decimals = self._resolve_perp_sz_decimals(asset_id)
+        if sz_decimals is not None:
+            return format_price_for_api(limit_px, sz_decimals, is_perp=True)
+
+        base_sz_decimals = self._resolve_spot_base_sz_decimals(asset_id)
+        if base_sz_decimals is not None:
+            return format_price_for_api(limit_px, base_sz_decimals, is_perp=False)
+
+        logger.debug(
+            "Falling back to raw limit price for asset %s because size decimals could not be resolved",
+            asset_id,
+        )
+        return limit_px
 
     def _market_price_context(self, asset: str) -> tuple[Decimal, Decimal | None, Decimal | None]:
         """Get market price context with bid, ask, and mid prices.
