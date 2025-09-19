@@ -18,8 +18,8 @@ logging.basicConfig(
 )
 
 ASSET_SYMBOL = "ETH"
-DEFAULT_SLIPPAGE = 0.01  # 1%
-SIZE = 0.005  # 0.005 ETH
+DEFAULT_SLIPPAGE = 0.05  # 5%
+SIZE = 0.01  # 0.01 ETH
 
 
 def main() -> None:

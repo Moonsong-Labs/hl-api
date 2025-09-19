@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable, Mapping, Sequence
+from decimal import Decimal
 from typing import Any, cast
 from urllib import error as urlerror
 from urllib import parse as urlparse
 from urllib import request as urlrequest
 
+from eth_abi import decode as abi_decode
+from eth_abi import encode as abi_encode
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 from hexbytes import HexBytes
@@ -20,7 +23,7 @@ from web3.types import ChecksumAddress, TxParams
 
 from .abi import HyperliquidStrategy_abi
 from .base import HLProtocolBase
-from .exceptions import NetworkError, NotImplementedError, ValidationError
+from .exceptions import NetworkError, ValidationError
 from .types import (
     ApprovalResponse,
     CancelResponse,
@@ -37,12 +40,18 @@ from .utils import (
     encode_tif,
     price_to_uint64,
     size_to_uint64,
+    uint64_to_price,
     validate_address,
 )
 
 logger = logging.getLogger(__name__)
 
 COREWRITER_ADDRESS = "0x3333333333333333333333333333333333333333"
+MARK_PX_PRECOMPILE_ADDRESS = "0x0000000000000000000000000000000000000806"
+BBO_PRECOMPILE_ADDRESS = "0x000000000000000000000000000000000000080e"
+PERP_ASSET_INFO_PRECOMPILE_ADDRESS = "0x000000000000000000000000000000000000080a"
+SPOT_INFO_PRECOMPILE_ADDRESS = "0x000000000000000000000000000000000000080b"
+TOKEN_INFO_PRECOMPILE_ADDRESS = "0x000000000000000000000000000000000000080C"
 
 DEFAULT_REQUEST_TIMEOUT = 10.0
 DEFAULT_RECEIPT_TIMEOUT = 120.0
@@ -87,11 +96,14 @@ class HLProtocolEVM(HLProtocolBase):
         self._strategy_contract: Contract | None = None
         self._chain_id: int | None = None
         self._connected = False
+        self._subvault_address: ChecksumAddress | None = None
 
         self._asset_by_symbol: dict[str, int] = {}
         self._token_index_by_symbol: dict[str, int] = {}
         self._hype_token_index: int | None = None
         self._metadata_loaded = False
+        self._perp_sz_decimals: dict[int, int] = {}
+        self._spot_base_sz_decimals: dict[int, int] = {}
 
         self._info_url = (
             "https://api.hyperliquid-testnet.xyz/info"
@@ -120,6 +132,9 @@ class HLProtocolEVM(HLProtocolBase):
             self._strategy_contract = contract
             self._chain_id = web3.eth.chain_id
             self._connected = True
+            self._subvault_address = None
+            self._perp_sz_decimals.clear()
+            self._spot_base_sz_decimals.clear()
 
             logger.info("Connected to HyperLiquid EVM at %s", self.rpc_url)
 
@@ -127,6 +142,14 @@ class HLProtocolEVM(HLProtocolBase):
                 self._hype_token_index = contract.functions.hypeTokenIndex().call()
             except Exception:
                 self._hype_token_index = None
+
+            try:
+                raw_subvault = contract.functions.subvault().call()
+                if isinstance(raw_subvault, str) and int(raw_subvault, 16) != 0:
+                    self._subvault_address = cast(ChecksumAddress, validate_address(raw_subvault))
+            except Exception:
+                # Subvault may be unset for some strategy deployments; ignore failures.
+                self._subvault_address = None
 
         except NetworkError:
             raise
@@ -146,6 +169,9 @@ class HLProtocolEVM(HLProtocolBase):
         self._strategy_contract = None
         self._chain_id = None
         self._connected = False
+        self._subvault_address = None
+        self._perp_sz_decimals.clear()
+        self._spot_base_sz_decimals.clear()
 
     def is_connected(self) -> bool:
         return self._connected and self._web3 is not None and self._strategy_contract is not None
@@ -154,10 +180,21 @@ class HLProtocolEVM(HLProtocolBase):
     # Core actions
     # ------------------------------------------------------------------
     def get_market_price(self, asset: str) -> float:
-        logger.warning(
-            "get_market_price not supported on HyperliquidStrategy contract for %s", asset
-        )
-        raise NotImplementedError("get_market_price")
+        """Get the current market price for an asset.
+
+        Returns:
+            float: The mid-market price.
+
+        Raises:
+            ValueError: If the asset is invalid or price cannot be determined.
+        """
+        self._ensure_connected()
+
+        try:
+            mid_price, _, _ = self._market_price_context(asset)
+            return float(mid_price)
+        except ValidationError as exc:
+            raise ValueError(str(exc)) from exc
 
     def market_order(
         self,
@@ -167,12 +204,40 @@ class HLProtocolEVM(HLProtocolBase):
         slippage: float = 0.05,
         cloid: str | None = None,
     ) -> OrderResponse:
-        logger.warning("market_order not supported on HyperliquidStrategy contract")
-        direction = "buy" if is_buy else "sell"
-        error_message = (
-            "Market orders are not currently available via the HyperliquidStrategy contract"
+        try:
+            mid_price, bid_price, ask_price = self._market_price_context(asset)
+            limit_price = self._compute_slippage_price(float(mid_price), is_buy, slippage)
+        except (NetworkError, ValidationError) as exc:
+            logger.error("Failed to compute market order price for %s: %s", asset, exc)
+            return OrderResponse(success=False, cloid=cloid, error=str(exc))
+
+        bid_str = f"{bid_price:.8f}" if bid_price is not None else "n/a"
+        ask_str = f"{ask_price:.8f}" if ask_price is not None else "n/a"
+        logger.info(
+            "Market order BBO for %s: bid=%s ask=%s mid=%.8f",
+            asset,
+            bid_str,
+            ask_str,
+            float(mid_price),
         )
-        return OrderResponse(success=False, cloid=cloid, error=f"{error_message} ({direction})")
+        direction = "buy" if is_buy else "sell"
+        logger.info(
+            "Market order limit for %s %s: slippage=%.4f -> %.8f",
+            asset,
+            direction,
+            slippage,
+            limit_price,
+        )
+
+        return self.limit_order(
+            asset=asset,
+            is_buy=is_buy,
+            limit_px=limit_price,
+            sz=sz,
+            reduce_only=False,
+            tif="IOC",
+            cloid=cloid,
+        )
 
     def market_close_position(
         self,
@@ -181,11 +246,67 @@ class HLProtocolEVM(HLProtocolBase):
         slippage: float = 0.05,
         cloid: str | None = None,
     ) -> OrderResponse:
-        logger.warning(
-            "market_close_position not supported on HyperliquidStrategy contract for %s", asset
+        self._ensure_connected()
+
+        try:
+            position = self._fetch_user_position(asset)
+        except NetworkError as exc:
+            logger.error("Failed to fetch position state for %s: %s", asset, exc)
+            return OrderResponse(success=False, cloid=cloid, error=str(exc))
+
+        if position is None:
+            message = f"No open position found for asset {asset}"
+            logger.info(message)
+            return OrderResponse(success=False, cloid=cloid, error=message)
+
+        szi_raw = position.get("szi")
+        try:
+            position_size = float(szi_raw) if szi_raw is not None else 0.0
+        except (TypeError, ValueError) as exc:
+            error = ValidationError(
+                "Unable to parse current position size",
+                field="szi",
+                value=position.get("szi"),
+            )
+            logger.error("Failed to parse position size for %s: %s", asset, exc)
+            return OrderResponse(success=False, cloid=cloid, error=str(error))
+
+        if position_size == 0:
+            message = f"No open position found for asset {asset}"
+            logger.info(message)
+            return OrderResponse(success=False, cloid=cloid, error=message)
+
+        is_buy = position_size < 0
+
+        if size is None:
+            target_size = abs(position_size)
+        else:
+            try:
+                target_size = float(size)
+            except (TypeError, ValueError):
+                error = ValidationError("Close size must be numeric", field="size", value=size)
+                return OrderResponse(success=False, cloid=cloid, error=str(error))
+
+        if target_size <= 0:
+            error = ValidationError("Close size must be positive", field="size", value=target_size)
+            return OrderResponse(success=False, cloid=cloid, error=str(error))
+
+        try:
+            mid_price = self.get_market_price(asset)
+            limit_price = self._compute_slippage_price(mid_price, is_buy, slippage)
+        except (NetworkError, ValidationError) as exc:
+            logger.error("Failed to compute close order price for %s: %s", asset, exc)
+            return OrderResponse(success=False, cloid=cloid, error=str(exc))
+
+        return self.limit_order(
+            asset=asset,
+            is_buy=is_buy,
+            limit_px=limit_price,
+            sz=target_size,
+            reduce_only=True,
+            tif="IOC",
+            cloid=cloid,
         )
-        error_message = "Closing positions with market orders is not currently available via the HyperliquidStrategy contract"
-        return OrderResponse(success=False, cloid=cloid, error=error_message)
 
     def limit_order(
         self,
@@ -465,6 +586,320 @@ class HLProtocolEVM(HLProtocolBase):
             or self._strategy_contract is None
         ):
             raise NetworkError("EVM connector is not connected", endpoint=self.rpc_url)
+
+    def _call_l1_read_precompile(
+        self,
+        address: str,
+        input_types: Sequence[str],
+        args: Sequence[Any],
+        output_types: Sequence[str],
+    ) -> tuple[Any, ...]:
+        assert self._web3 is not None
+
+        call_data = abi_encode(list(input_types), list(args)) if input_types else b""
+        destination = Web3.to_checksum_address(address)
+
+        try:
+            result = self._web3.eth.call({"to": destination, "data": call_data})
+        except Exception as exc:  # pragma: no cover - defensive
+            raise NetworkError(
+                "Failed to execute L1 read precompile",
+                endpoint=str(destination),
+                details={"error": str(exc)},
+            ) from exc
+
+        if not output_types:
+            return tuple()
+
+        try:
+            decoded = abi_decode(list(output_types), result)
+        except Exception as exc:  # pragma: no cover - defensive
+            raise NetworkError(
+                "Failed to decode L1 read precompile response",
+                endpoint=str(destination),
+                details={"error": str(exc)},
+            ) from exc
+
+        return tuple(decoded)
+
+    # best bid and offer
+    def _fetch_bbo_prices(self, asset_id: int) -> tuple[int, int]:
+        bid_uint, ask_uint = self._call_l1_read_precompile(
+            BBO_PRECOMPILE_ADDRESS,
+            ["uint32"],
+            [asset_id],
+            ["uint64", "uint64"],
+        )
+        return int(bid_uint), int(ask_uint)
+
+    def _read_mark_price(self, asset_id: int) -> int:
+        (mark_uint,) = self._call_l1_read_precompile(
+            MARK_PX_PRECOMPILE_ADDRESS,
+            ["uint32"],
+            [asset_id],
+            ["uint64"],
+        )
+        return int(mark_uint)
+
+    def _compute_slippage_price(self, mid_price: float, is_buy: bool, slippage: float) -> float:
+        if mid_price <= 0:
+            raise ValidationError("Mid price must be positive", field="mid_price", value=mid_price)
+
+        slip = Decimal(str(slippage))
+        if slip < 0:
+            raise ValidationError("Slippage must be non-negative", field="slippage", value=slippage)
+        if slip >= 1:
+            raise ValidationError(
+                "Slippage must be less than 1 (100%)",
+                field="slippage",
+                value=slippage,
+            )
+
+        base = Decimal(str(mid_price))
+        multiplier = Decimal(1) + slip if is_buy else Decimal(1) - slip
+
+        if multiplier <= 0:
+            raise ValidationError(
+                "Slippage too large for sell order",
+                field="slippage",
+                value=slippage,
+            )
+
+        return float(base * multiplier)
+
+    def _market_price_context(self, asset: str) -> tuple[Decimal, Decimal | None, Decimal | None]:
+        """Get market price context with bid, ask, and mid prices.
+
+        Returns:
+            Tuple of (mid_price, bid_price, ask_price) as Decimal values.
+            bid_price and ask_price may be None if unavailable.
+
+        Raises:
+            NetworkError: If no prices can be determined.
+        """
+        asset_id = self._resolve_asset_id(asset)
+
+        try:
+            bid_uint, ask_uint = self._fetch_bbo_prices(asset_id)
+        except NetworkError as exc:
+            logger.warning("BBO precompile unavailable for %s (asset %s): %s", asset, asset_id, exc)
+            bid_uint, ask_uint = 0, 0
+
+        if bid_uint and ask_uint:
+            mid_uint = (bid_uint + ask_uint) // 2
+        elif bid_uint or ask_uint:
+            mid_uint = bid_uint or ask_uint
+
+        mid_price, bid_price, ask_price = self._convert_market_prices(
+            asset_id, mid_uint, bid_uint, ask_uint
+        )
+
+        if mid_price is None or mid_price == Decimal(0):
+            raise NetworkError(
+                "Failed to convert market price to valid Decimal",
+                details={"asset": asset, "asset_id": asset_id, "mid_uint": mid_uint},
+            )
+        logger.info(
+            f"Market price for {asset} (id {asset_id}): mid={mid_price}, bid={bid_price}, ask={ask_price}"
+        )
+        return mid_price, bid_price, ask_price
+
+    def _convert_market_prices(
+        self, asset_id: int, mid_uint: int, bid_uint: int, ask_uint: int
+    ) -> tuple[Decimal, Decimal | None, Decimal | None]:
+        """Convert uint prices to Decimal based on asset type."""
+
+        sz_decimals = self._resolve_perp_sz_decimals(asset_id)
+        logger.info(f"Perp size decimals for asset {asset_id}: {sz_decimals}")
+
+        if sz_decimals is not None:
+            return (
+                self._convert_perp_price(mid_uint, sz_decimals),
+                self._convert_perp_price(bid_uint, sz_decimals) if bid_uint else None,
+                self._convert_perp_price(ask_uint, sz_decimals) if ask_uint else None,
+            )
+
+        # Try spot conversion
+        base_sz_decimals = self._resolve_spot_base_sz_decimals(asset_id)
+        if base_sz_decimals is not None:
+            return (
+                self._convert_spot_price(mid_uint, base_sz_decimals),
+                self._convert_spot_price(bid_uint, base_sz_decimals) if bid_uint else None,
+                self._convert_spot_price(ask_uint, base_sz_decimals) if ask_uint else None,
+            )
+
+        # Fallback to default conversion
+        return (
+            uint64_to_price(mid_uint),
+            uint64_to_price(bid_uint) if bid_uint else None,
+            uint64_to_price(ask_uint) if ask_uint else None,
+        )
+
+    def _convert_perp_price(self, price_uint: int, sz_decimals: int) -> Decimal:
+        exponent = 6 - int(sz_decimals)
+
+        if exponent <= 0:
+            raise ValueError("Size decimals too large for perp price conversion")
+
+        return Decimal(price_uint) / (Decimal(10) ** exponent)
+
+    def _resolve_perp_sz_decimals(self, asset_id: int) -> int | None:
+        if asset_id in self._perp_sz_decimals:
+            return self._perp_sz_decimals[asset_id]
+
+        try:
+            logger.debug(f"Calling perpAssetInfo precompile for asset {asset_id}")
+            result = self._call_l1_read_precompile(
+                PERP_ASSET_INFO_PRECOMPILE_ADDRESS,
+                ["uint32"],
+                [asset_id],
+                ["(string,uint32,uint8,uint8,bool)"],  # Returns a tuple
+            )
+            # Unpack the tuple - result is ((name, index, sz_decimals, wei_decimals, is_enabled),)
+            if result and len(result) > 0:
+                result = result[0]  # Extract the inner tuple
+            logger.debug(f"perpAssetInfo result for asset {asset_id}: {result}")
+        except NetworkError as exc:
+            logger.warning(f"perpAssetInfo NetworkError for asset {asset_id}: {exc}")
+            return None
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(f"perpAssetInfo call failed for asset {asset_id}: {exc}")
+            return None
+
+        if not result:
+            logger.error(f"Empty perp asset info for asset {asset_id}")
+            return None
+
+        logger.info(f"Perp asset info for asset {asset_id}: {result}")
+
+        try:
+            sz_decimals = int(result[2])
+        except (TypeError, ValueError, IndexError):
+            return None
+        logger.info(f"Resolved perp size decimals for asset {asset_id}: {sz_decimals}")
+        self._perp_sz_decimals[asset_id] = sz_decimals
+        return sz_decimals
+
+    def _convert_spot_price(self, price_uint: int, base_sz_decimals: int) -> Decimal:
+        exponent = 8 - int(base_sz_decimals)
+        if exponent >= 0:
+            return Decimal(price_uint) / (Decimal(10) ** exponent)
+        return Decimal(price_uint) * (Decimal(10) ** (-exponent))
+
+    def _resolve_spot_base_sz_decimals(self, asset_id: int) -> int | None:
+        if asset_id in self._spot_base_sz_decimals:
+            return self._spot_base_sz_decimals[asset_id]
+
+        try:
+            spot_info = self._call_l1_read_precompile(
+                SPOT_INFO_PRECOMPILE_ADDRESS,
+                ["uint32"],
+                [asset_id],
+                ["(string,uint64[2])"],  # Returns a tuple
+            )
+            # Unpack the tuple if needed
+            if spot_info and len(spot_info) > 0:
+                spot_info = spot_info[0]  # Extract the inner tuple
+        except NetworkError:
+            return None
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("spotInfo call failed for %s: %s", asset_id, exc)
+            return None
+
+        if not spot_info:
+            return None
+
+        try:
+            tokens = spot_info[1]
+        except (IndexError, TypeError):
+            return None
+
+        if not tokens:
+            return None
+
+        base_token_id = int(tokens[0])
+
+        try:
+            token_info = self._call_l1_read_precompile(
+                TOKEN_INFO_PRECOMPILE_ADDRESS,
+                ["uint32"],
+                [base_token_id],
+                [
+                    "string",
+                    "uint64[]",
+                    "uint64",
+                    "address",
+                    "address",
+                    "uint8",
+                    "uint8",
+                    "int8",
+                ],
+            )
+        except NetworkError:
+            return None
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("tokenInfo call failed for token %s: %s", base_token_id, exc)
+            return None
+
+        if not token_info:
+            return None
+
+        try:
+            sz_decimals = int(token_info[5])
+        except (IndexError, TypeError, ValueError):
+            return None
+
+        self._spot_base_sz_decimals[asset_id] = sz_decimals
+        return sz_decimals
+
+    def _resolve_trader_address(self) -> str:
+        if self._subvault_address is not None:
+            return self._subvault_address
+
+        if self._strategy_contract is not None:
+            try:
+                raw_subvault = self._strategy_contract.functions.subvault().call()
+                if isinstance(raw_subvault, str) and int(raw_subvault, 16) != 0:
+                    self._subvault_address = cast(ChecksumAddress, validate_address(raw_subvault))
+                    return self._subvault_address
+            except Exception:
+                # Some deployments may not expose a subvault; ignore failures.
+                pass
+
+        if self._account is not None:
+            return self._account.address
+
+        raise NetworkError("Trading account address unavailable", endpoint=self.rpc_url)
+
+    def _fetch_user_position(self, asset: str) -> Mapping[str, Any] | None:
+        trader_address = self._resolve_trader_address()
+
+        payload = {"type": "clearinghouseState", "user": trader_address}
+        state = self._post_json(self._info_url, payload)
+
+        if not isinstance(state, Mapping):
+            raise NetworkError(
+                "Unexpected response format when fetching user state",
+                endpoint=self._info_url,
+                details={"response": state},
+            )
+
+        positions = state.get("assetPositions")
+        if not isinstance(positions, Sequence):
+            return None
+
+        target_symbol = str(asset).upper()
+        for entry in positions:
+            if not isinstance(entry, Mapping):
+                continue
+            position = entry.get("position")
+            if not isinstance(position, Mapping):
+                continue
+            coin = position.get("coin")
+            if isinstance(coin, str) and coin.upper() == target_symbol:
+                return position
+
+        return None
 
     def _fetch_strategy_abi(self) -> list[dict[str, Any]]:
         if self._strategy_abi is not None:
@@ -749,7 +1184,18 @@ class HLProtocolEVM(HLProtocolBase):
         assert self._strategy_contract is not None
 
         function = getattr(self._strategy_contract.functions, function_name)(*args)
-        formatted_args = [self._summarise_param(arg) for arg in args]
+        formatted_args = []
+        for i, arg in enumerate(args):
+            if function_name in ["placeLimitBuyOrder", "placeLimitSellOrder"]:
+                if i == 1:  # Price parameter
+                    formatted_args.append(f"{arg} ({arg / 10**8:.8f})")
+                elif i == 2:  # Size parameter
+                    formatted_args.append(f"{arg} ({arg / 10**8:.8f})")
+                else:
+                    formatted_args.append(self._summarise_param(arg))
+            else:
+                formatted_args.append(self._summarise_param(arg))
+
         formatted_context = {k: self._summarise_param(v) for k, v in context.items()}
         logger.info(
             "Calling strategy %s.%s with args=%s context=%s",
