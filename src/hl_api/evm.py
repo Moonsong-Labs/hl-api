@@ -559,7 +559,7 @@ class HLProtocolEVM(HLProtocolBase):
     def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
         try:
             self._ensure_connected()
-            amount_uint = size_to_uint64(amount)
+            amount_uint = size_to_uint64(amount, 6)
             context = {"amount": amount_uint}
             payload = self._resolve_verification_payload("usd_class_transfer_to_perp", context)
             args: Sequence[Any] = [amount_uint, payload.as_tuple()]
@@ -591,7 +591,7 @@ class HLProtocolEVM(HLProtocolBase):
     def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
         try:
             self._ensure_connected()
-            amount_uint = size_to_uint64(amount)
+            amount_uint = size_to_uint64(amount, 6)
             context = {"amount": amount_uint}
             payload = self._resolve_verification_payload("usd_class_transfer_to_spot", context)
             args: Sequence[Any] = [amount_uint, payload.as_tuple()]
