@@ -1244,97 +1244,57 @@ class HLProtocolEVM(HLProtocolBase):
         action: str,
         context: Mapping[str, Any],
     ) -> dict[str, Any]:
+        """Send a transaction to the strategy contract using web3.py's built-in methods."""
         assert self._web3 is not None
         assert self._account is not None
         assert self._strategy_contract is not None
 
-        function = getattr(self._strategy_contract.functions, function_name)(*args)
+        contract_function = getattr(self._strategy_contract.functions, function_name)(*args)
+
         formatted_args = [summarise_param(arg) for arg in args]
-        formatted_context = {k: summarise_param(v) for k, v in context.items()}
-        logger.info(
-            "Calling strategy %s.%s with args=%s context=%s",
-            self.strategy_address,
+        logger.debug(
+            "Executing %s: %s.%s with args=%s",
+            action,
+            self.strategy_address[:10],
             function_name,
             formatted_args,
-            formatted_context,
         )
+
         try:
-            base_tx = function.build_transaction(
+            transaction = contract_function.build_transaction(
                 {
                     "from": self._account.address,
                     "nonce": self._web3.eth.get_transaction_count(self._account.address),
                 }
             )
 
-            mutable_tx: dict[str, Any] = dict(base_tx)
-            mutable_tx.setdefault("chainId", self._chain_id or self._web3.eth.chain_id)
+            signed_tx = self._account.sign_transaction(transaction)
+            tx_hash = self._web3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
-            gas_price = mutable_tx.pop("gasPrice", None)
-            need_dynamic_fees = (
-                "maxFeePerGas" not in mutable_tx or "maxPriorityFeePerGas" not in mutable_tx
-            )
-            if need_dynamic_fees:
-                fetched_priority_fee: int | None = None
-                try:
-                    fetched_priority_fee = int(self._web3.eth.max_priority_fee)  # type: ignore[attr-defined]
-                except (AttributeError, ValueError, TypeError):
-                    fetched_priority_fee = None
-
-                reference_fee = gas_price if gas_price is not None else self._web3.eth.gas_price
-                priority_fee = (
-                    fetched_priority_fee
-                    if fetched_priority_fee is not None
-                    else max(reference_fee // 10, 1)
-                )
-
-                max_fee = max(reference_fee, priority_fee * 2)
-
-                mutable_tx.setdefault("maxPriorityFeePerGas", priority_fee)
-                mutable_tx.setdefault("maxFeePerGas", max_fee)
-
-            tx_params = cast(TxParams, mutable_tx)
-            if "gas" not in mutable_tx:
-                gas_estimate = self._web3.eth.estimate_gas(tx_params)
-                mutable_tx["gas"] = gas_estimate
-                tx_params = cast(TxParams, mutable_tx)
-
-            tx_for_sign: dict[str, Any] = {key: value for key, value in tx_params.items()}
-            signed = self._account.sign_transaction(tx_for_sign)
-            tx_hash = self._web3.eth.send_raw_transaction(signed.raw_transaction)
-            logger.info("Submitted %s transaction %s", action, tx_hash.hex())
+            logger.info("Transaction %s submitted: %s", action, tx_hash.hex())
 
             receipt = None
-            block_number: Any | None = None
-            status_value: Any | None = None
             if self._wait_for_receipt:
                 receipt = self._web3.eth.wait_for_transaction_receipt(
                     tx_hash, timeout=self._receipt_timeout
                 )
-                block_number = getattr(receipt, "blockNumber", None)
-                status_value = getattr(receipt, "status", None)
-                if block_number is None and isinstance(receipt, Mapping):
-                    block_number = receipt.get("blockNumber")
-                if status_value is None and isinstance(receipt, Mapping):
-                    status_value = receipt.get("status")
                 logger.info(
-                    "Transaction %s included in block %s with status %s",
+                    "Transaction %s confirmed in block %s",
                     tx_hash.hex(),
-                    block_number,
-                    status_value,
+                    receipt.get("blockNumber"),
                 )
 
-            result = {
+            return {
                 "tx_hash": tx_hash.hex(),
                 "action": action,
                 "context": dict(context),
-                "receipt": serialise_receipt(receipt) if receipt is not None else None,
-                "block_number": block_number if receipt else None,
+                "receipt": serialise_receipt(receipt) if receipt else None,
+                "block_number": receipt.get("blockNumber") if receipt else None,
             }
-            return result
+
         except ContractLogicError as exc:
             raise NetworkError(
-                f"Strategy contract reverted during {action}",
-                details={"error": str(exc)},
+                f"Contract reverted during {action}", details={"error": str(exc)}
             ) from exc
         except ValueError as exc:
             message = str(exc)
@@ -1343,9 +1303,4 @@ class HLProtocolEVM(HLProtocolBase):
             raise NetworkError(
                 f"Failed to submit transaction for {action}: {message}",
                 details={"error": message},
-            ) from exc
-        except Exception as exc:  # pragma: no cover
-            raise NetworkError(
-                f"Unexpected error submitting transaction for {action}",
-                details={"error": str(exc)},
             ) from exc
