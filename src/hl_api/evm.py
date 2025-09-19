@@ -53,6 +53,7 @@ BBO_PRECOMPILE_ADDRESS = "0x000000000000000000000000000000000000080e"
 PERP_ASSET_INFO_PRECOMPILE_ADDRESS = "0x000000000000000000000000000000000000080a"
 SPOT_INFO_PRECOMPILE_ADDRESS = "0x000000000000000000000000000000000000080b"
 TOKEN_INFO_PRECOMPILE_ADDRESS = "0x000000000000000000000000000000000000080C"
+CORE_USER_EXISTS_PRECOMPILE_ADDRESS = "0x0000000000000000000000000000000000000810"
 
 DEFAULT_REQUEST_TIMEOUT = 10.0
 DEFAULT_RECEIPT_TIMEOUT = 120.0
@@ -132,7 +133,6 @@ class HLProtocolEVM(HLProtocolBase):
             self._account = account
             self._strategy_contract = contract
             self._chain_id = web3.eth.chain_id
-            self._connected = True
             self._subvault_address = None
             self._perp_sz_decimals.clear()
             self._spot_base_sz_decimals.clear()
@@ -144,18 +144,17 @@ class HLProtocolEVM(HLProtocolBase):
             except Exception:
                 self._hype_token_index = None
 
-            try:
-                raw_subvault = contract.functions.subvault().call()
-                if isinstance(raw_subvault, str) and int(raw_subvault, 16) != 0:
-                    self._subvault_address = cast(ChecksumAddress, validate_address(raw_subvault))
-            except Exception:
-                # Subvault may be unset for some strategy deployments; ignore failures.
-                self._subvault_address = None
+            self._subvault_address = self._load_and_validate_subvault()
+            self._connected = True
 
+        except ValidationError:
+            self.disconnect()
+            raise
         except NetworkError:
+            self.disconnect()
             raise
         except Exception as exc:  # pragma: no cover - defensive
-            self._connected = False
+            self.disconnect()
             raise NetworkError(
                 "Failed to initialize HyperLiquid EVM connection",
                 endpoint=self.rpc_url,
@@ -176,6 +175,58 @@ class HLProtocolEVM(HLProtocolBase):
 
     def is_connected(self) -> bool:
         return self._connected and self._web3 is not None and self._strategy_contract is not None
+
+    def _load_and_validate_subvault(self) -> ChecksumAddress:
+        if self._strategy_contract is None:
+            raise NetworkError(
+                "Strategy contract unavailable while fetching subvault",
+                endpoint=self.rpc_url,
+            )
+
+        try:
+            raw_subvault = self._strategy_contract.functions.subvault().call()
+        except Exception as exc:  # pragma: no cover - defensive
+            raise ValidationError(
+                "Unable to read strategy subvault address",
+                field="subvault",
+                details={"error": str(exc)},
+            ) from exc
+
+        try:
+            normalized = Web3.to_checksum_address(raw_subvault)
+        except Exception as exc:  # pragma: no cover - defensive
+            raise ValidationError(
+                "Strategy contract returned an invalid subvault",
+                field="subvault",
+                value=raw_subvault,
+                details={"error": str(exc)},
+            ) from exc
+
+        subvault = cast(ChecksumAddress, validate_address(normalized))
+        if int(subvault, 16) == 0:
+            raise ValidationError(
+                "Strategy contract does not define a subvault address",
+                field="subvault",
+                value=subvault,
+            )
+
+        if not self._core_user_exists(subvault):
+            raise ValidationError(
+                "Strategy subvault is not registered on HyperLiquid core",
+                field="subvault",
+                value=subvault,
+            )
+
+        return subvault
+
+    def _core_user_exists(self, address: ChecksumAddress) -> bool:
+        (exists,) = self._call_l1_read_precompile(
+            CORE_USER_EXISTS_PRECOMPILE_ADDRESS,
+            ["address"],
+            [address],
+            ["bool"],
+        )
+        return bool(exists)
 
     # ------------------------------------------------------------------
     # Core actions
@@ -892,13 +943,18 @@ class HLProtocolEVM(HLProtocolBase):
 
         if self._strategy_contract is not None:
             try:
-                raw_subvault = self._strategy_contract.functions.subvault().call()
-                if isinstance(raw_subvault, str) and int(raw_subvault, 16) != 0:
-                    self._subvault_address = cast(ChecksumAddress, validate_address(raw_subvault))
-                    return self._subvault_address
-            except Exception:
-                # Some deployments may not expose a subvault; ignore failures.
-                pass
+                self._subvault_address = self._load_and_validate_subvault()
+                return self._subvault_address
+            except ValidationError as exc:
+                raise NetworkError(str(exc), endpoint=self.rpc_url, details=exc.details) from exc
+            except NetworkError:
+                raise
+            except Exception as exc:  # pragma: no cover - defensive
+                raise NetworkError(
+                    "Unexpected failure resolving strategy subvault",
+                    endpoint=self.rpc_url,
+                    details={"error": str(exc)},
+                ) from exc
 
         if self._account is not None:
             return self._account.address
