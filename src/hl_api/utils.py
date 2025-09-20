@@ -1,7 +1,7 @@
 """Utility functions for HyperLiquid Unified API."""
 
 import random
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 
 from web3 import Web3
 
@@ -149,8 +149,7 @@ def generate_cloid() -> str:
     Returns:
         Random cloid as hex string (0x prefixed) for uint128
     """
-    # Generate a random 128-bit integer
-    # Using 16 bytes (128 bits) of randomness
+    # Draw a random 128-bit integer using Python's RNG
     cloid_int = random.randint(1, 2**128 - 1)
     return f"0x{cloid_int:032x}"
 
@@ -205,7 +204,6 @@ def cloid_to_uint128(cloid: str | None) -> int:
     if cloid is None:
         return 0
 
-    # Convert string to int (handle hex strings too)
     try:
         if isinstance(cloid, str) and cloid.startswith("0x"):
             cloid_int = int(cloid, 16)
@@ -221,3 +219,57 @@ def cloid_to_uint128(cloid: str | None) -> int:
         raise ValidationError("Cloid exceeds uint128 maximum", field="cloid", value=cloid)
 
     return cloid_int
+
+
+def format_price_for_api(price: float | Decimal, sz_decimals: int, is_perp: bool = True) -> float:
+    """Format price according to Hyperliquid API precision requirements.
+
+    Applies the following rules:
+    - Maximum 5 significant figures
+    - For perps: Maximum (6 - sz_decimals) decimal places
+    - For spot: Maximum (8 - sz_decimals) decimal places
+    - Trailing zeros are removed
+
+    Args:
+        price: The price to format
+        sz_decimals: Asset's size decimals from metadata
+        is_perp: True for perpetual contracts, False for spot
+
+    Returns:
+        Properly formatted price as float
+
+    Raises:
+        ValidationError: If price is invalid
+    """
+    if price <= 0:
+        raise ValidationError("Price must be positive", field="price", value=price)
+
+    price_d = price if isinstance(price, Decimal) else Decimal(str(price))
+
+    max_decimals = (6 - sz_decimals) if is_perp else (8 - sz_decimals)
+    max_sig_figs = 5
+
+    abs_price = price_d.copy_abs()
+    exponent_sig = abs_price.adjusted() - (max_sig_figs - 1)
+
+    if max_decimals >= 0:
+        leading_zeros = max(0, -abs_price.adjusted() - 1)
+        allowed_decimals = max_decimals + leading_zeros + (1 if abs_price < 1 else 0)
+        exponent_dec = -allowed_decimals
+    else:
+        exponent_dec = -max_decimals
+
+    final_exponent = max(exponent_sig, exponent_dec)
+
+    with localcontext() as ctx:
+        ctx.rounding = ROUND_HALF_UP
+        ctx.prec = max(
+            28,
+            abs(price_d.adjusted()) + max_sig_figs + 4,
+            abs(exponent_dec) + max_sig_figs + 4,
+        )
+
+        quantizer = Decimal(1).scaleb(final_exponent)
+        price_d = price_d.quantize(quantizer, rounding=ROUND_HALF_UP)
+
+    return float(price_d)

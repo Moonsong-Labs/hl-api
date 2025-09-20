@@ -1,7 +1,12 @@
 """Type definitions and data models for HyperLiquid Unified API."""
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Any
+
+from eth_typing import HexStr
+from web3 import Web3
 
 
 class ActionID(IntEnum):
@@ -138,3 +143,88 @@ Price = int | float  # Will be converted to uint64 internally
 Size = int | float  # Will be converted to uint64 internally
 Address = str  # Ethereum address
 Wei = int  # Wei amount for staking/delegation
+
+
+@dataclass
+class VerificationPayload:
+    """Serializable representation of IVerifier.VerificationPayload."""
+
+    verification_type: int
+    verification_data: bytes
+    proof: list[bytes]
+
+    @classmethod
+    def default(cls) -> "VerificationPayload":
+        """Return an empty payload using ONCHAIN_COMPACT (0)."""
+
+        return cls(verification_type=0, verification_data=b"", proof=[])
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "VerificationPayload":
+        """Construct a payload from a JSON-like dictionary."""
+
+        if data is None:
+            return cls.default()
+
+        verification_type = int(
+            data.get("verificationType") or data.get("verification_type") or data.get("type") or 0
+        )
+
+        raw_data = data.get("verificationData") or data.get("verification_data") or b""
+        verification_data = _coerce_bytes(raw_data)
+
+        proof_items = data.get("proof") or data.get("proofs") or []
+        proof = [_coerce_bytes(item) for item in _iterable(proof_items)]
+
+        return cls(
+            verification_type=verification_type, verification_data=verification_data, proof=proof
+        )
+
+    def as_tuple(self) -> tuple[int, bytes, list[bytes]]:
+        """Return the payload as tuple consumable by web3."""
+
+        return self.verification_type, self.verification_data, list(self.proof)
+
+
+def _coerce_bytes(value: Any) -> bytes:
+    """Convert arbitrary values (hex/base64/iterables) into bytes."""
+
+    if value is None:
+        return b""
+
+    if isinstance(value, bytes):
+        return value
+
+    if isinstance(value, bytearray):
+        return bytes(value)
+
+    if isinstance(value, str):
+        lower = value.lower()
+        if lower.startswith("0x"):
+            return Web3.to_bytes(hexstr=HexStr(value))
+
+        try:
+            import base64
+
+            return base64.b64decode(value, validate=False)
+        except Exception:
+            return value.encode("utf-8")
+
+    if isinstance(value, Iterable):
+        return bytes(value)
+
+    if isinstance(value, int):
+        length = (value.bit_length() + 7) // 8 or 1
+        return value.to_bytes(length, byteorder="big")
+
+    raise TypeError(f"Unsupported type for byte coercion: {type(value)!r}")
+
+
+def _iterable(value: Any) -> Iterable:
+    if isinstance(value, list | tuple | set):
+        return value
+
+    if value is None:
+        return []
+
+    return [value]
