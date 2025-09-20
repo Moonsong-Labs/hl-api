@@ -15,7 +15,7 @@ from eth_account import Account
 from eth_account.signers.local import LocalAccount
 from web3 import HTTPProvider, Web3
 from web3.contract import Contract
-from web3.exceptions import ContractLogicError
+from web3.middleware import SignAndSendRawMiddlewareBuilder
 from web3.types import ChecksumAddress
 
 from .abi import HyperliquidStrategy_abi
@@ -126,6 +126,8 @@ class HLProtocolEVM(HLProtocolBase):
                 raise NetworkError("Unable to connect to HyperLiquid RPC", endpoint=self.rpc_url)
 
             account = cast(LocalAccount, Account.from_key(self.private_key))  # type: ignore[arg-type]
+            web3.middleware_onion.add(cast(Any, SignAndSendRawMiddlewareBuilder.build(account)))
+            web3.eth.default_account = account.address
             abi = self._fetch_strategy_abi()
             contract = web3.eth.contract(address=self.strategy_address, abi=abi)
 
@@ -1081,86 +1083,29 @@ class HLProtocolEVM(HLProtocolBase):
         assert self._strategy_contract is not None
 
         contract_function = getattr(self._strategy_contract.functions, function_name)(*args)
+        logger.info("Dispatching %s via %s", action, function_name)
 
-        logger.info("Preparing transaction for action=%s function=%s", action, function_name)
+        tx_hash = contract_function.transact()
+        logger.info("Transaction sent for action=%s hash=%s", action, tx_hash.hex())
 
-        try:
-            tx_params = {
-                "from": self._account.address,
-                "nonce": self._web3.eth.get_transaction_count(self._account.address),
-            }
-            transaction = contract_function.build_transaction(tx_params)
+        receipt = (
+            self._web3.eth.wait_for_transaction_receipt(tx_hash, timeout=self._receipt_timeout)
+            if self._wait_for_receipt
+            else None
+        )
 
-            signed_tx = self._account.sign_transaction(transaction)
-            tx_hash = self._web3.eth.send_raw_transaction(signed_tx.raw_transaction)
-            logger.info("Transaction sent for action=%s, hash=%s", action, tx_hash.hex())
-
-            receipt = None
-            if self._wait_for_receipt:
-                logger.debug("Waiting for transaction receipt for hash=%s", tx_hash.hex())
-                try:
-                    receipt = self._web3.eth.wait_for_transaction_receipt(
-                        tx_hash, timeout=self._receipt_timeout
-                    )
-
-                    if receipt.get("status") == 0:
-                        logger.error(
-                            "Transaction reverted. Action=%s, Hash=%s", action, tx_hash.hex()
-                        )
-                        try:
-                            contract_function.call(tx_params)
-                        except ContractLogicError as revert_exc:
-                            raise NetworkError(
-                                f"Transaction reverted for {action}: {revert_exc}",
-                                details={"hash": tx_hash.hex()},
-                            ) from revert_exc
-                        raise NetworkError(
-                            f"Transaction reverted for {action} with no reason.",
-                            details={"hash": tx_hash.hex()},
-                        )
-
-                    logger.info(
-                        "Transaction confirmed for action=%s, hash=%s, block=%s",
-                        action,
-                        tx_hash.hex(),
-                        receipt.get("blockNumber"),
-                    )
-
-                except Exception as timeout_exc:
-                    if "timeout" in str(timeout_exc).lower():
-                        logger.error(
-                            "Timeout waiting for transaction receipt for action=%s", action
-                        )
-                        return {
-                            "tx_hash": tx_hash.hex(),
-                            "action": action,
-                            "context": dict(context),
-                            "receipt": None,
-                            "block_number": None,
-                            "timeout": True,
-                        }
-                    raise
-
-            return {
-                "tx_hash": tx_hash.hex(),
-                "action": action,
-                "context": dict(context),
-                "receipt": serialise_receipt(receipt) if receipt else None,
-                "block_number": receipt.get("blockNumber") if receipt else None,
-            }
-
-        except ContractLogicError as exc:
-            logger.error(
-                "Contract logic error during pre-flight check for action=%s: %s", action, exc
+        if receipt:
+            logger.info(
+                "Transaction confirmed for action=%s hash=%s block=%s",
+                action,
+                tx_hash.hex(),
+                getattr(receipt, "blockNumber", None),
             )
-            raise NetworkError(
-                f"Contract pre-flight check failed for {action}: {exc}",
-                details={"function": function_name},
-            ) from exc
-        except Exception as exc:
-            logger.error(
-                "Unexpected error sending transaction for action=%s: %s", action, exc, exc_info=True
-            )
-            raise NetworkError(
-                f"Failed to send transaction for {action}", details={"function": function_name}
-            ) from exc
+
+        return {
+            "tx_hash": tx_hash.hex(),
+            "action": action,
+            "context": dict(context),
+            "receipt": serialise_receipt(receipt) if receipt else None,
+            "block_number": getattr(receipt, "blockNumber", None) if receipt else None,
+        }
