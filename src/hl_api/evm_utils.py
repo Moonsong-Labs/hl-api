@@ -46,8 +46,8 @@ def transaction_method(action_name: str, response_type: type) -> Callable[[F], F
                     function_name, contract_args, context, extra_fields = result
 
                 tx_result = self._send_contract_transaction(
-                    function_name=function_name,
-                    args=contract_args,
+                    function_name,
+                    contract_args,
                     action=action_name,
                     context=context,
                 )
