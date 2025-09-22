@@ -680,6 +680,13 @@ class HLProtocolEVM(HLProtocolBase):
                 "Truncating bridge amount to 6 decimals (%s request on %s)", amount, direction
             )
 
+        logger.info(
+            "Stage CCTP [%s]: preparing bridge amount %.6f (units=%s)",
+            direction,
+            float(amount_decimal),
+            amount_units,
+        )
+
         if max_fee_override is not None and max_fee_override < 0:
             return BridgeResponse(
                 success=False,
@@ -700,6 +707,13 @@ class HLProtocolEVM(HLProtocolBase):
                 error="Finality threshold must be positive",
                 raw_response={"direction": direction, "finality_threshold": finality_threshold},
             )
+
+        logger.info(
+            "Stage CCTP [%s]: fetching fee quote (domains %s -> %s)",
+            direction,
+            source_domain,
+            destination_domain,
+        )
 
         try:
             max_fee = (
@@ -751,6 +765,7 @@ class HLProtocolEVM(HLProtocolBase):
                 "dst": destination_domain,
             },
         )
+        logger.info("Stage CCTP [%s]: submitting burn transaction", direction)
 
         try:
             burn_tx = source_contract.functions.bridgeUSDCViaCCTPv2(
@@ -780,6 +795,13 @@ class HLProtocolEVM(HLProtocolBase):
             else None
         )
 
+        logger.info(
+            "Stage CCTP [%s]: polling IRIS for attestation (domain=%s, tx=%s)",
+            direction,
+            source_domain,
+            burn_tx_hash,
+        )
+
         try:
             message, attestation = self._poll_iris_attestation(source_domain, burn_tx_hash)
         except TimeoutError as exc:
@@ -796,6 +818,15 @@ class HLProtocolEVM(HLProtocolBase):
                     "burn_receipt": serialise_receipt(burn_receipt) if burn_receipt else None,
                 },
             )
+
+        logger.info(
+            "Stage CCTP [%s]: received attestation (len=%s) and message (len=%s)",
+            direction,
+            len(attestation) if attestation else 0,
+            len(message) if message else 0,
+        )
+
+        logger.info("Stage CCTP [%s]: submitting claim transaction", direction)
 
         try:
             claim_tx = destination_contract.functions.receiveUSDCViaCCTPv2(
@@ -923,6 +954,13 @@ class HLProtocolEVM(HLProtocolBase):
 
     def _poll_iris_attestation(self, domain: int, tx_hash: str) -> tuple[str, str]:
         url = f"{self._iris_base_url}/v2/messages/{domain}?transactionHash={tx_hash}"
+        logger.info(
+            "IRIS polling started (domain=%s, tx=%s, max_polls=%s, interval=%ss)",
+            domain,
+            tx_hash,
+            self._iris_max_polls,
+            self._iris_poll_interval,
+        )
         for attempt in range(1, self._iris_max_polls + 1):
             try:
                 response = self._session.get(
