@@ -221,14 +221,16 @@ class HLProtocolEVM(HLProtocolBase):
         web3.eth.default_account = account.address
 
     def _load_and_validate_subvault(self) -> ChecksumAddress:
-        if self._strategy_contract is None:
+        try:
+            contract = self.strategy_contract
+        except NetworkError as exc:
             raise NetworkError(
                 "Strategy contract unavailable while fetching subvault",
                 endpoint=self.rpc_url,
-            )
+            ) from exc
 
         try:
-            raw_subvault = self._strategy_contract.functions.subvault().call()
+            raw_subvault = contract.functions.subvault().call()
         except Exception as exc:  # pragma: no cover - defensive
             raise ValidationError(
                 "Unable to read strategy subvault address",
@@ -557,14 +559,14 @@ class HLProtocolEVM(HLProtocolBase):
         args: Sequence[Any],
         output_types: Sequence[str],
     ) -> tuple[Any, ...]:
-        assert self._web3 is not None
+        web3 = self.hyperliquid_web3
 
         call_data = abi_encode(list(input_types), list(args)) if input_types else b""
         addr_str = address.value if isinstance(address, Precompile) else address
         destination = Web3.to_checksum_address(addr_str)
 
         try:
-            result = self._web3.eth.call({"to": destination, "data": call_data})
+            result = web3.eth.call({"to": destination, "data": call_data})
         except Exception as exc:  # pragma: no cover - defensive
             raise NetworkError(
                 "Failed to execute L1 read precompile",
@@ -833,7 +835,12 @@ class HLProtocolEVM(HLProtocolBase):
         if self._subvault_address is not None:
             return self._subvault_address
 
-        if self._strategy_contract is not None:
+        try:
+            contract = self.strategy_contract
+        except NetworkError:
+            contract = None
+
+        if contract is not None:
             try:
                 self._subvault_address = self._load_and_validate_subvault()
                 return self._subvault_address
@@ -1065,18 +1072,18 @@ class HLProtocolEVM(HLProtocolBase):
         context: Mapping[str, Any],
     ) -> dict[str, Any]:
         """Send a transaction to the strategy contract using web3.py's built-in methods."""
-        assert self._web3 is not None
-        assert self._account is not None
-        assert self._strategy_contract is not None
+        web3 = self.hyperliquid_web3
+        contract = self.strategy_contract
+        self.account  # Ensure signer is hydrated before dispatching
 
-        contract_function = getattr(self._strategy_contract.functions, function_name)(*args)
+        contract_function = getattr(contract.functions, function_name)(*args)
         logger.info("Dispatching %s via %s", action, function_name)
 
         tx_hash = contract_function.transact()
         logger.info("Transaction sent for action=%s hash=%s", action, tx_hash.hex())
 
         receipt = (
-            self._web3.eth.wait_for_transaction_receipt(tx_hash, timeout=self._receipt_timeout)
+            web3.eth.wait_for_transaction_receipt(tx_hash, timeout=self._receipt_timeout)
             if self._wait_for_receipt
             else None
         )
@@ -1096,6 +1103,24 @@ class HLProtocolEVM(HLProtocolBase):
             "receipt": serialise_receipt(receipt) if receipt else None,
             "block_number": getattr(receipt, "blockNumber", None) if receipt else None,
         }
+
+    @property
+    def account(self) -> LocalAccount:
+        if self._account is None:
+            raise NetworkError(
+                "Signer account is not initialized; call connect() first",
+                endpoint=self.hl_rpc_url,
+            )
+        return self._account
+
+    @property
+    def strategy_contract(self) -> Contract:
+        if self._strategy_contract is None:
+            raise NetworkError(
+                "Strategy contract is not connected; call connect() first",
+                endpoint=self.hl_rpc_url,
+            )
+        return self._strategy_contract
 
     @property
     def hyperliquid_web3(self) -> Web3:
