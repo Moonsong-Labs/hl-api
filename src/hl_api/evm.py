@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable, Mapping, Sequence
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from functools import lru_cache
 from typing import Any, cast
 
@@ -18,7 +19,7 @@ from web3.contract import Contract
 from web3.middleware import SignAndSendRawMiddlewareBuilder
 from web3.types import ChecksumAddress
 
-from .abi import HyperliquidStrategy_abi
+from .abi import HyperliquidBridgeStrategy_abi, HyperliquidStrategy_abi
 from .base import HLProtocolBase
 from .constants import Precompile
 from .evm_utils import (
@@ -31,6 +32,7 @@ from .evm_utils import (
 from .exceptions import NetworkError, ValidationError
 from .types import (
     ApprovalResponse,
+    BridgeResponse,
     CancelResponse,
     DelegateResponse,
     FinalizeResponse,
@@ -54,6 +56,12 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_REQUEST_TIMEOUT = 10.0
 DEFAULT_RECEIPT_TIMEOUT = 120.0
+DEFAULT_IRIS_POLL_INTERVAL = 2.0
+DEFAULT_IRIS_MAX_POLLS = 600
+DEFAULT_CCTP_FINALITY_THRESHOLD = 1000
+USDC_SCALING = Decimal("1000000")
+IRIS_API_PROD = "https://iris-api.circle.com"
+IRIS_API_SANDBOX = "https://iris-api-sandbox.circle.com"
 
 VerificationResolver = Callable[
     [str, Mapping[str, Any]], VerificationPayload | Mapping[str, Any] | None
@@ -77,6 +85,12 @@ class HLProtocolEVM(HLProtocolBase):
         wait_for_receipt: bool = True,
         receipt_timeout: float = DEFAULT_RECEIPT_TIMEOUT,
         testnet: bool = True,
+        mainnet_bridge_strategy_address: str | None = None,
+        iris_poll_interval: float = DEFAULT_IRIS_POLL_INTERVAL,
+        iris_max_polls: int = DEFAULT_IRIS_MAX_POLLS,
+        hyperliquid_domain: int | None = None,
+        mainnet_domain: int | None = None,
+        cctp_finality_threshold: int = DEFAULT_CCTP_FINALITY_THRESHOLD,
     ) -> None:
         self.private_key = private_key
         self.hl_rpc_url = hl_rpc_url
@@ -84,6 +98,11 @@ class HLProtocolEVM(HLProtocolBase):
         self.hl_strategy_address = cast(ChecksumAddress, validate_address(hl_strategy_address))
         self.bridge_strategy_address = cast(
             ChecksumAddress, validate_address(bridge_strategy_address)
+        )
+        self._mainnet_bridge_address: ChecksumAddress | None = (
+            cast(ChecksumAddress, validate_address(mainnet_bridge_strategy_address))
+            if mainnet_bridge_strategy_address
+            else None
         )
         self.corewriter_address = cast(ChecksumAddress, validate_address(Precompile.COREWRITER))
 
@@ -95,6 +114,12 @@ class HLProtocolEVM(HLProtocolBase):
         self._wait_for_receipt = wait_for_receipt
         self._receipt_timeout = receipt_timeout
         self._testnet = testnet
+        self._hyper_domain = hyperliquid_domain if hyperliquid_domain is not None else 19
+        self._mainnet_domain = mainnet_domain if mainnet_domain is not None else 0
+        self._cctp_finality_threshold = cctp_finality_threshold
+        self._iris_base_url = IRIS_API_SANDBOX if self._testnet else IRIS_API_PROD
+        self._iris_poll_interval = iris_poll_interval
+        self._iris_max_polls = iris_max_polls
 
         self._hl_provider: HTTPProvider | None = None
         self._mn_provider: HTTPProvider | None = None
@@ -105,10 +130,9 @@ class HLProtocolEVM(HLProtocolBase):
         self._chain_id: int | None = None
         self._connected = False
         self._subvault_address: ChecksumAddress | None = None
-
+        self._hyper_bridge_contract: Contract | None = None
+        self._mainnet_bridge_contract: Contract | None = None
         self._session = requests.Session()
-        self._session.headers.update({"User-Agent": "hl-api/evm"})
-
         self._asset_by_symbol: dict[str, int] = {}
         self._token_index_by_symbol: dict[str, int] = {}
         self._hype_token_index: int | None = None
@@ -142,6 +166,8 @@ class HLProtocolEVM(HLProtocolBase):
             self._strategy_contract = contract
             self._chain_id = hl_web3.eth.chain_id
             self._subvault_address = None
+            self._hyper_bridge_contract = None
+            self._mainnet_bridge_contract = None
 
             mn_provider, mn_web3 = self._build_web3_provider(
                 self.mn_rpc_url, network_name="Mainnet"
@@ -202,6 +228,8 @@ class HLProtocolEVM(HLProtocolBase):
         self._chain_id = None
         self._connected = False
         self._subvault_address = None
+        self._hyper_bridge_contract = None
+        self._mainnet_bridge_contract = None
         # Clear lru_cache for metadata methods
         self._resolve_perp_sz_decimals.cache_clear()
         self._resolve_spot_base_sz_decimals.cache_clear()
@@ -512,6 +540,82 @@ class HLProtocolEVM(HLProtocolBase):
         message = "Perp collateral send is not exposed by the HyperliquidStrategy contract"
         return SendResponse(success=False, recipient=recipient, amount=None, error=message)
 
+    def bridge_mainnet_to_hyperliquid(
+        self,
+        amount: float,
+        *,
+        max_fee: int | None = None,
+        min_finality_threshold: int | None = None,
+    ) -> BridgeResponse:
+        """Bridge USDC from Ethereum mainnet to HyperEVM via CCTPv2."""
+
+        try:
+            self._ensure_connected()
+            source_contract = self._ensure_bridge_contract("mainnet")
+            destination_contract = self._ensure_bridge_contract("hyper")
+        except (ValidationError, NetworkError) as exc:
+            return BridgeResponse(
+                success=False,
+                error=str(exc),
+                raw_response={
+                    "field": getattr(exc, "field", None),
+                    "value": getattr(exc, "value", None),
+                    "details": getattr(exc, "details", None),
+                    "direction": "mainnet_to_hyper",
+                },
+            )
+
+        return self._bridge_via_cctp(
+            amount=amount,
+            source_contract=source_contract,
+            destination_contract=destination_contract,
+            source_domain=self._mainnet_domain,
+            destination_domain=self._hyper_domain,
+            direction="mainnet_to_hyper",
+            max_fee_override=max_fee,
+            min_finality_threshold=min_finality_threshold,
+            source_web3=self.mainnet_web3,
+            destination_web3=self.hyperliquid_web3,
+        )
+
+    def bridge_hyperliquid_to_mainnet(
+        self,
+        amount: float,
+        *,
+        max_fee: int | None = None,
+        min_finality_threshold: int | None = None,
+    ) -> BridgeResponse:
+        """Bridge USDC from HyperEVM back to Ethereum mainnet via CCTPv2."""
+
+        try:
+            self._ensure_connected()
+            source_contract = self._ensure_bridge_contract("hyper")
+            destination_contract = self._ensure_bridge_contract("mainnet")
+        except (ValidationError, NetworkError) as exc:
+            return BridgeResponse(
+                success=False,
+                error=str(exc),
+                raw_response={
+                    "field": getattr(exc, "field", None),
+                    "value": getattr(exc, "value", None),
+                    "details": getattr(exc, "details", None),
+                    "direction": "hyper_to_mainnet",
+                },
+            )
+
+        return self._bridge_via_cctp(
+            amount=amount,
+            source_contract=source_contract,
+            destination_contract=destination_contract,
+            source_domain=self._hyper_domain,
+            destination_domain=self._mainnet_domain,
+            direction="hyper_to_mainnet",
+            max_fee_override=max_fee,
+            min_finality_threshold=min_finality_threshold,
+            source_web3=self.hyperliquid_web3,
+            destination_web3=self.mainnet_web3,
+        )
+
     @transaction_method("usd_class_transfer_to_perp", TransferResponse)
     def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
         """Transfer USD from spot to perpetual account."""
@@ -543,6 +647,356 @@ class HLProtocolEVM(HLProtocolBase):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    def _bridge_via_cctp(
+        self,
+        *,
+        amount: float,
+        source_contract: Contract,
+        destination_contract: Contract,
+        source_domain: int,
+        destination_domain: int,
+        direction: str,
+        max_fee_override: int | None,
+        min_finality_threshold: int | None,
+        source_web3: Web3,
+        destination_web3: Web3,
+    ) -> BridgeResponse:
+        try:
+            amount_units, amount_decimal, truncated = self._normalise_usdc_amount(amount)
+        except ValidationError as exc:
+            return BridgeResponse(
+                success=False,
+                error=str(exc),
+                raw_response={
+                    "direction": direction,
+                    "field": exc.field,
+                    "value": exc.value,
+                    "details": exc.details,
+                },
+            )
+
+        if truncated:
+            logger.warning(
+                "Truncating bridge amount to 6 decimals (%s request on %s)", amount, direction
+            )
+
+        if max_fee_override is not None and max_fee_override < 0:
+            return BridgeResponse(
+                success=False,
+                amount=float(amount_decimal),
+                error="max_fee must be non-negative",
+                raw_response={"direction": direction, "max_fee": max_fee_override},
+            )
+
+        finality_threshold = (
+            min_finality_threshold
+            if min_finality_threshold is not None
+            else self._cctp_finality_threshold
+        )
+        if finality_threshold <= 0:
+            return BridgeResponse(
+                success=False,
+                amount=float(amount_decimal),
+                error="Finality threshold must be positive",
+                raw_response={"direction": direction, "finality_threshold": finality_threshold},
+            )
+
+        try:
+            max_fee = (
+                max_fee_override
+                if max_fee_override is not None
+                else self._fetch_cctp_fee(amount_units, source_domain, destination_domain)
+            )
+        except ValidationError as exc:
+            return BridgeResponse(
+                success=False,
+                amount=float(amount_decimal),
+                error=str(exc),
+                raw_response={
+                    "direction": direction,
+                    "field": exc.field,
+                    "value": exc.value,
+                    "details": exc.details,
+                },
+            )
+        except requests.RequestException as exc:
+            logger.error("Failed to fetch CCTP fee quote: %s", exc)
+            return BridgeResponse(
+                success=False,
+                amount=float(amount_decimal),
+                error=f"Failed to fetch CCTP fee quote: {exc}",
+                raw_response={"direction": direction},
+            )
+
+        if max_fee >= amount_units:
+            return BridgeResponse(
+                success=False,
+                amount=float(amount_decimal),
+                error="Quoted max fee exceeds or equals bridge amount",
+                raw_response={
+                    "direction": direction,
+                    "max_fee": max_fee,
+                    "amount_units": amount_units,
+                },
+            )
+
+        payload_entry = VerificationPayload.default().as_tuple()
+        payload = [payload_entry, payload_entry]
+        logger.info(
+            "Initiating CCTP bridge %(dir)s: amount=%(amt).6f, domains %(src)s->%(dst)s",
+            {
+                "dir": direction,
+                "amt": float(amount_decimal),
+                "src": source_domain,
+                "dst": destination_domain,
+            },
+        )
+
+        try:
+            burn_tx = source_contract.functions.bridgeUSDCViaCCTPv2(
+                amount_units,
+                max_fee,
+                finality_threshold,
+                payload,
+            ).transact()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception("Failed to submit CCTP burn on %s", direction)
+            return BridgeResponse(
+                success=False,
+                amount=float(amount_decimal),
+                error=str(exc),
+                raw_response={
+                    "direction": direction,
+                    "max_fee": max_fee,
+                    "amount_units": amount_units,
+                },
+            )
+
+        burn_tx_hash = burn_tx.hex()
+        logger.info("Submitted CCTP burn (%s): %s", direction, burn_tx_hash)
+        burn_receipt = (
+            source_web3.eth.wait_for_transaction_receipt(burn_tx, timeout=self._receipt_timeout)
+            if self._wait_for_receipt
+            else None
+        )
+
+        try:
+            message, attestation = self._poll_iris_attestation(source_domain, burn_tx_hash)
+        except TimeoutError as exc:
+            logger.error("IRIS attestation timed out for %s", direction)
+            return BridgeResponse(
+                success=False,
+                amount=float(amount_decimal),
+                error=str(exc),
+                burn_tx_hash=burn_tx_hash,
+                raw_response={
+                    "direction": direction,
+                    "max_fee": max_fee,
+                    "amount_units": amount_units,
+                    "burn_receipt": serialise_receipt(burn_receipt) if burn_receipt else None,
+                },
+            )
+
+        try:
+            claim_tx = destination_contract.functions.receiveUSDCViaCCTPv2(
+                message, attestation
+            ).transact()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception("Failed to submit CCTP claim on %s", direction)
+            return BridgeResponse(
+                success=False,
+                amount=float(amount_decimal),
+                error=str(exc),
+                burn_tx_hash=burn_tx_hash,
+                message=message,
+                attestation=attestation,
+                raw_response={
+                    "direction": direction,
+                    "max_fee": max_fee,
+                    "amount_units": amount_units,
+                    "burn_receipt": serialise_receipt(burn_receipt) if burn_receipt else None,
+                },
+            )
+
+        claim_tx_hash = claim_tx.hex()
+        logger.info("Submitted CCTP claim (%s): %s", direction, claim_tx_hash)
+        claim_receipt = (
+            destination_web3.eth.wait_for_transaction_receipt(
+                claim_tx, timeout=self._receipt_timeout
+            )
+            if self._wait_for_receipt
+            else None
+        )
+
+        amount_float = float(Decimal(amount_units) / USDC_SCALING)
+        return BridgeResponse(
+            success=True,
+            amount=amount_float,
+            burn_tx_hash=burn_tx_hash,
+            claim_tx_hash=claim_tx_hash,
+            message=message,
+            attestation=attestation,
+            raw_response={
+                "direction": direction,
+                "max_fee": max_fee,
+                "amount_units": amount_units,
+                "finality_threshold": finality_threshold,
+                "burn_receipt": serialise_receipt(burn_receipt) if burn_receipt else None,
+                "claim_receipt": serialise_receipt(claim_receipt) if claim_receipt else None,
+                "source_domain": source_domain,
+                "destination_domain": destination_domain,
+            },
+        )
+
+    def _normalise_usdc_amount(self, amount: float | str | Decimal) -> tuple[int, Decimal, bool]:
+        if isinstance(amount, Decimal):
+            quantity = amount
+        else:
+            try:
+                quantity = Decimal(str(amount))
+            except (ValueError, InvalidOperation) as exc:
+                raise ValidationError(
+                    "Invalid USDC amount",
+                    field="amount",
+                    value=amount,
+                    details={"error": str(exc)},
+                ) from exc
+
+        if quantity <= 0:
+            raise ValidationError(
+                "Bridge amount must be positive", field="amount", value=float(quantity)
+            )
+
+        scaled_decimal = quantity * USDC_SCALING
+        scaled_integral = scaled_decimal.to_integral_value(rounding=ROUND_DOWN)
+        truncated = scaled_integral != scaled_decimal
+
+        return int(scaled_integral), scaled_integral / USDC_SCALING, truncated
+
+    def _fetch_cctp_fee(self, amount_units: int, src_domain: int, dest_domain: int) -> int:
+        url = f"{self._iris_base_url}/v2/burn/USDC/fees/{src_domain}/{dest_domain}"
+        response = self._session.get(url, timeout=self._request_timeout)
+        response.raise_for_status()
+        payload = response.json()
+
+        if not isinstance(payload, list):
+            raise ValidationError(
+                "Unexpected fee response format",
+                field="iris_response",
+                value=payload,
+            )
+
+        chosen_entry: Mapping[str, Any] | None = None
+        for entry in payload:
+            if (
+                isinstance(entry, Mapping)
+                and entry.get("finalityThreshold") == self._cctp_finality_threshold
+            ):
+                chosen_entry = entry
+                break
+        if chosen_entry is None:
+            for entry in payload:
+                if isinstance(entry, Mapping):
+                    chosen_entry = entry
+                    break
+
+        if not chosen_entry:
+            logger.warning(
+                "Fee response missing usable entries for domains %s -> %s", src_domain, dest_domain
+            )
+            return 0
+
+        try:
+            bps = int(chosen_entry.get("minimumFee", 0))
+        except (TypeError, ValueError):
+            bps = 0
+
+        fee = (amount_units * bps + 9999) // 10000
+        logger.info(
+            "CCTP fee quote %s -> %s: bps=%s maxFee=%s",
+            src_domain,
+            dest_domain,
+            bps,
+            fee,
+        )
+        return fee
+
+    def _poll_iris_attestation(self, domain: int, tx_hash: str) -> tuple[str, str]:
+        url = f"{self._iris_base_url}/v2/messages/{domain}?transactionHash={tx_hash}"
+        for attempt in range(1, self._iris_max_polls + 1):
+            try:
+                response = self._session.get(
+                    url,
+                    timeout=self._request_timeout,
+                    headers={"Cache-Control": "no-cache"},
+                )
+            except requests.RequestException as exc:
+                logger.debug("IRIS poll attempt %s failed: %s", attempt, exc)
+                time.sleep(self._iris_poll_interval)
+                continue
+
+            if response.status_code == 200:
+                payload = response.json()
+                messages = self._extract_iris_messages(payload)
+                if messages:
+                    entry = messages[0]
+                    attestation = entry.get("attestation")
+                    message = entry.get("message")
+                    if attestation and attestation != "PENDING" and message:
+                        logger.info("IRIS attestation ready on attempt %s", attempt)
+                        return str(message), str(attestation)
+                    logger.debug("IRIS message pending on attempt %s", attempt)
+            elif response.status_code != 404:
+                logger.debug(
+                    "IRIS poll attempt %s returned status %s",
+                    attempt,
+                    response.status_code,
+                )
+
+            time.sleep(self._iris_poll_interval)
+
+        raise TimeoutError(
+            f"Timed out waiting for IRIS attestation after {self._iris_max_polls * self._iris_poll_interval:.0f} seconds"
+        )
+
+    def _extract_iris_messages(self, payload: Any) -> list[Mapping[str, Any]]:
+        if isinstance(payload, Mapping):
+            direct = payload.get("messages")
+            if isinstance(direct, list):
+                return [entry for entry in direct if isinstance(entry, Mapping)]
+            data = payload.get("data")
+            if isinstance(data, Mapping):
+                nested = data.get("messages")
+                if isinstance(nested, list):
+                    return [entry for entry in nested if isinstance(entry, Mapping)]
+        return []
+
+    def _ensure_bridge_contract(self, chain: str) -> Contract:
+        if chain == "hyper":
+            if self._hyper_bridge_contract is None:
+                web3 = self.hyperliquid_web3
+                self._hyper_bridge_contract = web3.eth.contract(
+                    address=self.bridge_strategy_address,
+                    abi=HyperliquidBridgeStrategy_abi,
+                )
+            return self._hyper_bridge_contract
+
+        if chain == "mainnet":
+            if self._mainnet_bridge_address is None:
+                raise ValidationError(
+                    "Mainnet bridge strategy address is not configured",
+                    field="bridge_strategy_address",
+                )
+            if self._mainnet_bridge_contract is None:
+                web3 = self.mainnet_web3
+                self._mainnet_bridge_contract = web3.eth.contract(
+                    address=self._mainnet_bridge_address,
+                    abi=HyperliquidBridgeStrategy_abi,
+                )
+            return self._mainnet_bridge_contract
+
+        raise ValidationError("Unknown bridge chain", field="chain", value=chain)
+
     def _ensure_connected(self) -> None:
         if not self.is_connected():
             raise NetworkError("EVM connector is not connected", endpoint=self.rpc_url)
