@@ -85,7 +85,7 @@ class HLProtocolEVM(HLProtocolBase):
         wait_for_receipt: bool = True,
         receipt_timeout: float = DEFAULT_RECEIPT_TIMEOUT,
         testnet: bool = True,
-        mainnet_bridge_strategy_address: str | None = None,
+        iris_base_url: str | None = None,
         iris_poll_interval: float = DEFAULT_IRIS_POLL_INTERVAL,
         iris_max_polls: int = DEFAULT_IRIS_MAX_POLLS,
         hyperliquid_domain: int | None = None,
@@ -99,11 +99,7 @@ class HLProtocolEVM(HLProtocolBase):
         self.bridge_strategy_address = cast(
             ChecksumAddress, validate_address(bridge_strategy_address)
         )
-        self._mainnet_bridge_address: ChecksumAddress | None = (
-            cast(ChecksumAddress, validate_address(mainnet_bridge_strategy_address))
-            if mainnet_bridge_strategy_address
-            else None
-        )
+        self._mainnet_bridge_address: ChecksumAddress | None = None
         self.corewriter_address = cast(ChecksumAddress, validate_address(Precompile.COREWRITER))
 
         self._verification_payload_url = verification_payload_url
@@ -117,7 +113,8 @@ class HLProtocolEVM(HLProtocolBase):
         self._hyper_domain = hyperliquid_domain if hyperliquid_domain is not None else 19
         self._mainnet_domain = mainnet_domain if mainnet_domain is not None else 0
         self._cctp_finality_threshold = cctp_finality_threshold
-        self._iris_base_url = IRIS_API_SANDBOX if self._testnet else IRIS_API_PROD
+        resolved_iris = iris_base_url or (IRIS_API_SANDBOX if self._testnet else IRIS_API_PROD)
+        self._iris_base_url = resolved_iris.rstrip("/")
         self._iris_poll_interval = iris_poll_interval
         self._iris_max_polls = iris_max_polls
 
@@ -661,18 +658,25 @@ class HLProtocolEVM(HLProtocolBase):
         source_web3: Web3,
         destination_web3: Web3,
     ) -> BridgeResponse:
+        raw_context: dict[str, Any] = {
+            "direction": direction,
+            "source_domain": source_domain,
+            "destination_domain": destination_domain,
+        }
+
         try:
             amount_units, amount_decimal, truncated = self._normalise_usdc_amount(amount)
         except ValidationError as exc:
-            return BridgeResponse(
-                success=False,
+            return self._bridge_failure(
+                direction=direction,
                 error=str(exc),
-                raw_response={
-                    "direction": direction,
-                    "field": exc.field,
-                    "value": exc.value,
-                    "details": exc.details,
-                },
+                amount=None,
+                raw=self._with_context(
+                    raw_context,
+                    field=exc.field,
+                    value=exc.value,
+                    details=exc.details,
+                ),
             )
 
         if truncated:
@@ -680,19 +684,16 @@ class HLProtocolEVM(HLProtocolBase):
                 "Truncating bridge amount to 6 decimals (%s request on %s)", amount, direction
             )
 
-        logger.info(
-            "Stage CCTP [%s]: preparing bridge amount %.6f (units=%s)",
-            direction,
-            float(amount_decimal),
-            amount_units,
-        )
+        amount_float = float(amount_decimal)
+        raw_context["amount_units"] = amount_units
+        self._stage(direction, "prepare amount", amount=f"{amount_float:.6f}", units=amount_units)
 
         if max_fee_override is not None and max_fee_override < 0:
-            return BridgeResponse(
-                success=False,
-                amount=float(amount_decimal),
+            return self._bridge_failure(
+                direction=direction,
                 error="max_fee must be non-negative",
-                raw_response={"direction": direction, "max_fee": max_fee_override},
+                amount=amount_float,
+                raw=self._with_context(raw_context, max_fee=max_fee_override),
             )
 
         finality_threshold = (
@@ -700,21 +701,16 @@ class HLProtocolEVM(HLProtocolBase):
             if min_finality_threshold is not None
             else self._cctp_finality_threshold
         )
+        raw_context["finality_threshold"] = finality_threshold
         if finality_threshold <= 0:
-            return BridgeResponse(
-                success=False,
-                amount=float(amount_decimal),
+            return self._bridge_failure(
+                direction=direction,
                 error="Finality threshold must be positive",
-                raw_response={"direction": direction, "finality_threshold": finality_threshold},
+                amount=amount_float,
+                raw=raw_context,
             )
 
-        logger.info(
-            "Stage CCTP [%s]: fetching fee quote (domains %s -> %s)",
-            direction,
-            source_domain,
-            destination_domain,
-        )
-
+        self._stage(direction, "fetch fee quote", source=source_domain, dest=destination_domain)
         try:
             max_fee = (
                 max_fee_override
@@ -722,51 +718,37 @@ class HLProtocolEVM(HLProtocolBase):
                 else self._fetch_cctp_fee(amount_units, source_domain, destination_domain)
             )
         except ValidationError as exc:
-            return BridgeResponse(
-                success=False,
-                amount=float(amount_decimal),
+            return self._bridge_failure(
+                direction=direction,
                 error=str(exc),
-                raw_response={
-                    "direction": direction,
-                    "field": exc.field,
-                    "value": exc.value,
-                    "details": exc.details,
-                },
+                amount=amount_float,
+                raw=self._with_context(
+                    raw_context,
+                    field=exc.field,
+                    value=exc.value,
+                    details=exc.details,
+                ),
             )
         except requests.RequestException as exc:
             logger.error("Failed to fetch CCTP fee quote: %s", exc)
-            return BridgeResponse(
-                success=False,
-                amount=float(amount_decimal),
+            return self._bridge_failure(
+                direction=direction,
                 error=f"Failed to fetch CCTP fee quote: {exc}",
-                raw_response={"direction": direction},
+                amount=amount_float,
+                raw=raw_context,
             )
 
+        raw_context["max_fee"] = max_fee
         if max_fee >= amount_units:
-            return BridgeResponse(
-                success=False,
-                amount=float(amount_decimal),
+            return self._bridge_failure(
+                direction=direction,
                 error="Quoted max fee exceeds or equals bridge amount",
-                raw_response={
-                    "direction": direction,
-                    "max_fee": max_fee,
-                    "amount_units": amount_units,
-                },
+                amount=amount_float,
+                raw=raw_context,
             )
 
-        payload_entry = VerificationPayload.default().as_tuple()
-        payload = [payload_entry, payload_entry]
-        logger.info(
-            "Initiating CCTP bridge %(dir)s: amount=%(amt).6f, domains %(src)s->%(dst)s",
-            {
-                "dir": direction,
-                "amt": float(amount_decimal),
-                "src": source_domain,
-                "dst": destination_domain,
-            },
-        )
-        logger.info("Stage CCTP [%s]: submitting burn transaction", direction)
-
+        payload = [VerificationPayload.default().as_tuple()] * 2
+        self._stage(direction, "submit burn transaction")
         try:
             burn_tx = source_contract.functions.bridgeUSDCViaCCTPv2(
                 amount_units,
@@ -776,81 +758,57 @@ class HLProtocolEVM(HLProtocolBase):
             ).transact()
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception("Failed to submit CCTP burn on %s", direction)
-            return BridgeResponse(
-                success=False,
-                amount=float(amount_decimal),
+            return self._bridge_failure(
+                direction=direction,
                 error=str(exc),
-                raw_response={
-                    "direction": direction,
-                    "max_fee": max_fee,
-                    "amount_units": amount_units,
-                },
+                amount=amount_float,
+                raw=raw_context,
             )
 
-        burn_tx_hash = burn_tx.hex()
-        logger.info("Submitted CCTP burn (%s): %s", direction, burn_tx_hash)
+        burn_tx_hash = burn_tx.to_0x_hex()
+        self._stage(direction, "burn submitted", tx=burn_tx_hash)
         burn_receipt = (
             source_web3.eth.wait_for_transaction_receipt(burn_tx, timeout=self._receipt_timeout)
             if self._wait_for_receipt
             else None
         )
-
-        logger.info(
-            "Stage CCTP [%s]: polling IRIS for attestation (domain=%s, tx=%s)",
-            direction,
-            source_domain,
-            burn_tx_hash,
-        )
+        burn_receipt_data = serialise_receipt(burn_receipt) if burn_receipt else None
+        if burn_receipt_data is not None:
+            raw_context["burn_receipt"] = burn_receipt_data
 
         try:
-            message, attestation = self._poll_iris_attestation(source_domain, burn_tx_hash)
+            message, attestation = self._poll_iris_attestation(
+                direction, source_domain, burn_tx_hash
+            )
         except TimeoutError as exc:
             logger.error("IRIS attestation timed out for %s", direction)
-            return BridgeResponse(
-                success=False,
-                amount=float(amount_decimal),
+            return self._bridge_failure(
+                direction=direction,
                 error=str(exc),
+                amount=amount_float,
                 burn_tx_hash=burn_tx_hash,
-                raw_response={
-                    "direction": direction,
-                    "max_fee": max_fee,
-                    "amount_units": amount_units,
-                    "burn_receipt": serialise_receipt(burn_receipt) if burn_receipt else None,
-                },
+                raw=raw_context,
             )
 
-        logger.info(
-            "Stage CCTP [%s]: received attestation (len=%s) and message (len=%s)",
-            direction,
-            len(attestation) if attestation else 0,
-            len(message) if message else 0,
-        )
-
-        logger.info("Stage CCTP [%s]: submitting claim transaction", direction)
-
+        self._stage(direction, "submit claim transaction")
         try:
             claim_tx = destination_contract.functions.receiveUSDCViaCCTPv2(
                 message, attestation
             ).transact()
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception("Failed to submit CCTP claim on %s", direction)
-            return BridgeResponse(
-                success=False,
-                amount=float(amount_decimal),
+            return self._bridge_failure(
+                direction=direction,
                 error=str(exc),
+                amount=amount_float,
                 burn_tx_hash=burn_tx_hash,
                 message=message,
                 attestation=attestation,
-                raw_response={
-                    "direction": direction,
-                    "max_fee": max_fee,
-                    "amount_units": amount_units,
-                    "burn_receipt": serialise_receipt(burn_receipt) if burn_receipt else None,
-                },
+                raw=raw_context,
             )
 
         claim_tx_hash = claim_tx.hex()
-        logger.info("Submitted CCTP claim (%s): %s", direction, claim_tx_hash)
+        self._stage(direction, "claim submitted", tx=claim_tx_hash)
         claim_receipt = (
             destination_web3.eth.wait_for_transaction_receipt(
                 claim_tx, timeout=self._receipt_timeout
@@ -858,25 +816,19 @@ class HLProtocolEVM(HLProtocolBase):
             if self._wait_for_receipt
             else None
         )
+        claim_receipt_data = serialise_receipt(claim_receipt) if claim_receipt else None
+        if claim_receipt_data is not None:
+            raw_context["claim_receipt"] = claim_receipt_data
 
-        amount_float = float(Decimal(amount_units) / USDC_SCALING)
-        return BridgeResponse(
-            success=True,
-            amount=amount_float,
+        self._stage(direction, "bridge complete", burn_tx=burn_tx_hash, claim_tx=claim_tx_hash)
+        return self._bridge_success(
+            direction=direction,
+            amount=float(Decimal(amount_units) / USDC_SCALING),
             burn_tx_hash=burn_tx_hash,
             claim_tx_hash=claim_tx_hash,
             message=message,
             attestation=attestation,
-            raw_response={
-                "direction": direction,
-                "max_fee": max_fee,
-                "amount_units": amount_units,
-                "finality_threshold": finality_threshold,
-                "burn_receipt": serialise_receipt(burn_receipt) if burn_receipt else None,
-                "claim_receipt": serialise_receipt(claim_receipt) if claim_receipt else None,
-                "source_domain": source_domain,
-                "destination_domain": destination_domain,
-            },
+            raw=raw_context,
         )
 
     def _normalise_usdc_amount(self, amount: float | str | Decimal) -> tuple[int, Decimal, bool]:
@@ -917,28 +869,24 @@ class HLProtocolEVM(HLProtocolBase):
                 value=payload,
             )
 
-        chosen_entry: Mapping[str, Any] | None = None
-        for entry in payload:
-            if (
-                isinstance(entry, Mapping)
-                and entry.get("finalityThreshold") == self._cctp_finality_threshold
-            ):
-                chosen_entry = entry
-                break
-        if chosen_entry is None:
-            for entry in payload:
-                if isinstance(entry, Mapping):
-                    chosen_entry = entry
-                    break
-
-        if not chosen_entry:
+        entries = [entry for entry in payload if isinstance(entry, Mapping)]
+        if not entries:
             logger.warning(
                 "Fee response missing usable entries for domains %s -> %s", src_domain, dest_domain
             )
             return 0
 
+        chosen = next(
+            (
+                entry
+                for entry in entries
+                if entry.get("finalityThreshold") == self._cctp_finality_threshold
+            ),
+            entries[0],
+        )
+
         try:
-            bps = int(chosen_entry.get("minimumFee", 0))
+            bps = int(chosen.get("minimumFee", 0))
         except (TypeError, ValueError):
             bps = 0
 
@@ -952,14 +900,15 @@ class HLProtocolEVM(HLProtocolBase):
         )
         return fee
 
-    def _poll_iris_attestation(self, domain: int, tx_hash: str) -> tuple[str, str]:
+    def _poll_iris_attestation(self, direction: str, domain: int, tx_hash: str) -> tuple[str, str]:
         url = f"{self._iris_base_url}/v2/messages/{domain}?transactionHash={tx_hash}"
-        logger.info(
-            "IRIS polling started (domain=%s, tx=%s, max_polls=%s, interval=%ss)",
-            domain,
-            tx_hash,
-            self._iris_max_polls,
-            self._iris_poll_interval,
+        self._stage(
+            direction,
+            "poll IRIS",
+            domain=domain,
+            tx=tx_hash,
+            max_polls=self._iris_max_polls,
+            interval=self._iris_poll_interval,
         )
         for attempt in range(1, self._iris_max_polls + 1):
             try:
@@ -969,7 +918,7 @@ class HLProtocolEVM(HLProtocolBase):
                     headers={"Cache-Control": "no-cache"},
                 )
             except requests.RequestException as exc:
-                logger.debug("IRIS poll attempt %s failed: %s", attempt, exc)
+                logger.debug("CCTP [%s] IRIS poll attempt %s failed: %s", direction, attempt, exc)
                 time.sleep(self._iris_poll_interval)
                 continue
 
@@ -981,12 +930,13 @@ class HLProtocolEVM(HLProtocolBase):
                     attestation = entry.get("attestation")
                     message = entry.get("message")
                     if attestation and attestation != "PENDING" and message:
-                        logger.info("IRIS attestation ready on attempt %s", attempt)
+                        self._stage(direction, "IRIS attestation ready", attempt=attempt)
                         return str(message), str(attestation)
                     logger.debug("IRIS message pending on attempt %s", attempt)
             elif response.status_code != 404:
                 logger.debug(
-                    "IRIS poll attempt %s returned status %s",
+                    "CCTP [%s] IRIS poll attempt %s returned status %s",
+                    direction,
                     attempt,
                     response.status_code,
                 )
@@ -1025,15 +975,76 @@ class HLProtocolEVM(HLProtocolBase):
                     "Mainnet bridge strategy address is not configured",
                     field="bridge_strategy_address",
                 )
+            address = self._mainnet_bridge_address
+            assert address is not None
             if self._mainnet_bridge_contract is None:
                 web3 = self.mainnet_web3
                 self._mainnet_bridge_contract = web3.eth.contract(
-                    address=self._mainnet_bridge_address,
+                    address=address,
                     abi=HyperliquidBridgeStrategy_abi,
                 )
             return self._mainnet_bridge_contract
 
         raise ValidationError("Unknown bridge chain", field="chain", value=chain)
+
+    @staticmethod
+    def _with_context(base: Mapping[str, Any], **updates: Any) -> dict[str, Any]:
+        context = dict(base)
+        context.update({k: v for k, v in updates.items() if v is not None})
+        return context
+
+    def _stage(self, direction: str, message: str, **details: Any) -> None:
+        suffix = ""
+        if details:
+            formatted = ", ".join(f"{key}={value}" for key, value in details.items())
+            suffix = f" ({formatted})"
+        logger.info("Stage CCTP [%s]: %s%s", direction, message, suffix)
+
+    def _bridge_failure(
+        self,
+        *,
+        direction: str,
+        error: str,
+        amount: float | None,
+        raw: Mapping[str, Any],
+        burn_tx_hash: str | None = None,
+        message: str | None = None,
+        attestation: str | None = None,
+    ) -> BridgeResponse:
+        self._stage(direction, "bridge aborted", reason=error)
+        context = dict(raw)
+        return BridgeResponse(
+            success=False,
+            amount=amount,
+            burn_tx_hash=burn_tx_hash,
+            claim_tx_hash=None,
+            message=message,
+            attestation=attestation,
+            error=error,
+            raw_response=context,
+        )
+
+    def _bridge_success(
+        self,
+        *,
+        direction: str,
+        amount: float,
+        burn_tx_hash: str,
+        claim_tx_hash: str,
+        message: str,
+        attestation: str,
+        raw: Mapping[str, Any],
+    ) -> BridgeResponse:
+        context = dict(raw)
+        return BridgeResponse(
+            success=True,
+            amount=amount,
+            burn_tx_hash=burn_tx_hash,
+            claim_tx_hash=claim_tx_hash,
+            message=message,
+            attestation=attestation,
+            raw_response=context,
+        )
 
     def _ensure_connected(self) -> None:
         if not self.is_connected():
