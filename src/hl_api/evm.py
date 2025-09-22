@@ -66,11 +66,12 @@ class HLProtocolEVM(HLProtocolBase):
     def __init__(
         self,
         private_key: str,
-        rpc_url: str,
-        strategy_address: str,
+        hl_rpc_url: str,
+        mn_rpc_url: str,
+        hl_strategy_address: str,
+        bridge_strategy_address: str,
         *,
         request_timeout: float = DEFAULT_REQUEST_TIMEOUT,
-        strategy_abi: list[dict[str, Any]] | None = None,
         verification_payload_url: str | None = None,
         verification_payload_resolver: VerificationResolver | None = None,
         wait_for_receipt: bool = True,
@@ -78,11 +79,14 @@ class HLProtocolEVM(HLProtocolBase):
         testnet: bool = True,
     ) -> None:
         self.private_key = private_key
-        self.rpc_url = rpc_url
-        self.strategy_address = cast(ChecksumAddress, validate_address(strategy_address))
+        self.hl_rpc_url = hl_rpc_url
+        self.mn_rpc_url = mn_rpc_url
+        self.hl_strategy_address = cast(ChecksumAddress, validate_address(hl_strategy_address))
+        self.bridge_strategy_address = cast(
+            ChecksumAddress, validate_address(bridge_strategy_address)
+        )
         self.corewriter_address = cast(ChecksumAddress, validate_address(Precompile.COREWRITER))
 
-        self._strategy_abi = strategy_abi
         self._verification_payload_url = verification_payload_url
         self._verification_payload_resolver: VerificationResolver | None = (
             verification_payload_resolver
@@ -92,7 +96,10 @@ class HLProtocolEVM(HLProtocolBase):
         self._receipt_timeout = receipt_timeout
         self._testnet = testnet
 
+        self._hl_provider: HTTPProvider | None = None
+        self._mn_provider: HTTPProvider | None = None
         self._web3: Web3 | None = None
+        self._mainnet_web3: Web3 | None = None
         self._account: LocalAccount | None = None
         self._strategy_contract: Contract | None = None
         self._chain_id: int | None = None
@@ -120,22 +127,29 @@ class HLProtocolEVM(HLProtocolBase):
         """Establish a web3 connection and hydrate contract helpers."""
 
         try:
-            provider = HTTPProvider(self.rpc_url, request_kwargs={"timeout": self._request_timeout})
-            web3 = Web3(provider)
-            if not web3.is_connected():
-                raise NetworkError("Unable to connect to HyperLiquid RPC", endpoint=self.rpc_url)
-
             account = cast(LocalAccount, Account.from_key(self.private_key))  # type: ignore[arg-type]
-            web3.middleware_onion.add(cast(Any, SignAndSendRawMiddlewareBuilder.build(account)))
-            web3.eth.default_account = account.address
-            abi = self._fetch_strategy_abi()
-            contract = web3.eth.contract(address=self.strategy_address, abi=abi)
 
-            self._web3 = web3
+            hl_provider, hl_web3 = self._build_web3_provider(
+                self.hl_rpc_url, network_name="HyperLiquid"
+            )
+            self._hl_provider = hl_provider
+            self._web3 = hl_web3
             self._account = account
+            self._apply_account_middleware(hl_web3, account)
+            abi = self._fetch_strategy_abi()
+            contract = hl_web3.eth.contract(address=self.hl_strategy_address, abi=abi)
+
             self._strategy_contract = contract
-            self._chain_id = web3.eth.chain_id
+            self._chain_id = hl_web3.eth.chain_id
             self._subvault_address = None
+
+            mn_provider, mn_web3 = self._build_web3_provider(
+                self.mn_rpc_url, network_name="Mainnet"
+            )
+            self._mn_provider = mn_provider
+            self._mainnet_web3 = mn_web3
+            self._apply_account_middleware(mn_web3, account)
+
             # Clear any cached metadata from previous connection
             if hasattr(self._resolve_perp_sz_decimals, "cache_clear"):
                 self._resolve_perp_sz_decimals.cache_clear()
@@ -146,12 +160,13 @@ class HLProtocolEVM(HLProtocolBase):
             try:
                 from web3.gas_strategies.rpc import rpc_gas_price_strategy
 
-                web3.eth.set_gas_price_strategy(rpc_gas_price_strategy)
+                hl_web3.eth.set_gas_price_strategy(rpc_gas_price_strategy)
                 logger.debug("Configured RPC gas price strategy")
             except ImportError:
                 logger.debug("RPC gas price strategy not available, using web3.py defaults")
 
-            logger.info("Connected to HyperLiquid EVM at %s", self.rpc_url)
+            logger.info("Connected to HyperLiquid EVM at %s", self.hl_rpc_url)
+            logger.info("Connected to Mainnet RPC at %s", self.mn_rpc_url)
 
             try:
                 self._hype_token_index = contract.functions.hypeTokenIndex().call()
@@ -178,7 +193,10 @@ class HLProtocolEVM(HLProtocolBase):
     def disconnect(self) -> None:
         """Clear cached web3 state and invalidate caches."""
 
+        self._hl_provider = None
+        self._mn_provider = None
         self._web3 = None
+        self._mainnet_web3 = None
         self._account = None
         self._strategy_contract = None
         self._chain_id = None
@@ -190,6 +208,17 @@ class HLProtocolEVM(HLProtocolBase):
 
     def is_connected(self) -> bool:
         return self._connected and self._web3 is not None and self._strategy_contract is not None
+
+    def _build_web3_provider(self, rpc_url: str, *, network_name: str) -> tuple[HTTPProvider, Web3]:
+        provider = HTTPProvider(rpc_url, request_kwargs={"timeout": self._request_timeout})
+        web3 = Web3(provider)
+        if not web3.is_connected():
+            raise NetworkError(f"Unable to connect to {network_name} RPC", endpoint=rpc_url)
+        return provider, web3
+
+    def _apply_account_middleware(self, web3: Web3, account: LocalAccount) -> None:
+        web3.middleware_onion.add(cast(Any, SignAndSendRawMiddlewareBuilder.build(account)))
+        web3.eth.default_account = account.address
 
     def _load_and_validate_subvault(self) -> ChecksumAddress:
         if self._strategy_contract is None:
@@ -828,7 +857,7 @@ class HLProtocolEVM(HLProtocolBase):
         trader_address = self._resolve_trader_address()
 
         payload = {"type": "clearinghouseState", "user": trader_address}
-        state = self._post_json(self._info_url, payload)
+        state = self._request_json("POST", self._info_url, payload)
 
         if not isinstance(state, Mapping):
             raise NetworkError(
@@ -855,25 +884,15 @@ class HLProtocolEVM(HLProtocolBase):
         return None
 
     def _fetch_strategy_abi(self) -> list[dict[str, Any]]:
-        if self._strategy_abi is not None:
-            return self._strategy_abi
+        # eventually fetch from etherscan
 
-        self._strategy_abi = HyperliquidStrategy_abi
-        return self._strategy_abi
-
-    def load_asset_metadata_from_url(self, url: str) -> None:
-        """Fetch asset metadata JSON from a URL and register symbol mappings."""
-
-        payload = self._fetch_json(url)
-        self._ingest_asset_metadata(payload)
-        if not self._asset_by_symbol and not self._token_index_by_symbol:
-            logger.warning("Asset metadata from %s did not produce any symbol mappings", url)
-        self._metadata_loaded = True
+        _strategy_abi = HyperliquidStrategy_abi
+        return _strategy_abi
 
     def load_asset_metadata_from_info(self) -> None:
         """Fetch asset metadata directly from the HyperLiquid info endpoint."""
 
-        payload = self._post_json(self._info_url, {"type": "meta"})
+        payload = self._request_json("POST", self._info_url, {"type": "meta"})
         universe = payload.get("universe") if isinstance(payload, Mapping) else None
         if isinstance(universe, Sequence):
             for asset_id, entry in enumerate(universe):
@@ -888,32 +907,6 @@ class HLProtocolEVM(HLProtocolBase):
         self._metadata_loaded = True
         if not self._asset_by_symbol:
             logger.warning("Meta info call did not produce any symbol mappings")
-
-    def register_asset_metadata(self, payload: Any) -> None:
-        """Register asset metadata from a provided object (dict/list/etc)."""
-
-        self._ingest_asset_metadata(payload)
-        if not self._asset_by_symbol and not self._token_index_by_symbol:
-            logger.warning("Asset metadata payload did not produce any symbol mappings")
-        self._metadata_loaded = True
-
-    def _ingest_asset_metadata(self, payload: Any) -> None:
-        if isinstance(payload, Mapping):
-            for key in ("assets", "perpetuals", "symbols"):
-                if key in payload:
-                    self._register_asset_entries(payload[key])
-            for key in ("tokenIndices", "token_indices", "tokens"):
-                if key in payload:
-                    self._register_token_entries(payload[key])
-            if not self._asset_by_symbol and not self._token_index_by_symbol:
-                self._register_asset_entries(payload)
-            return
-
-        if isinstance(payload, Sequence) and not isinstance(payload, str | bytes | bytearray):
-            self._register_asset_entries(payload)
-            return
-
-        logger.debug("Skipping unrecognised metadata payload type %s", type(payload).__name__)
 
     def _register_asset_entries(self, entries: Any) -> None:
         if isinstance(entries, Mapping):
@@ -1017,7 +1010,7 @@ class HLProtocolEVM(HLProtocolBase):
 
         if self._verification_payload_url:
             url = build_verification_url(self._verification_payload_url, action, context)
-            data = self._fetch_json(url)
+            data = self._request_json("GET", url)
             mapped = dict(data) if isinstance(data, Mapping) else None
             return VerificationPayload.from_dict(mapped)
 
@@ -1063,12 +1056,6 @@ class HLProtocolEVM(HLProtocolBase):
         response.raise_for_status()
         return response.json()
 
-    def _fetch_json(self, url: str | None) -> Any:
-        return self._request_json("GET", url)
-
-    def _post_json(self, url: str | None, payload: Mapping[str, Any]) -> Any:
-        return self._request_json("POST", url, payload)
-
     def _send_contract_transaction(
         self,
         function_name: str,
@@ -1109,3 +1096,21 @@ class HLProtocolEVM(HLProtocolBase):
             "receipt": serialise_receipt(receipt) if receipt else None,
             "block_number": getattr(receipt, "blockNumber", None) if receipt else None,
         }
+
+    @property
+    def hyperliquid_web3(self) -> Web3:
+        if self._web3 is None:
+            raise NetworkError(
+                "HyperLiquid Web3 provider is not connected", endpoint=self.hl_rpc_url
+            )
+        return self._web3
+
+    @property
+    def mainnet_web3(self) -> Web3:
+        if self._mainnet_web3 is None:
+            raise NetworkError("Mainnet Web3 provider is not connected", endpoint=self.mn_rpc_url)
+        return self._mainnet_web3
+
+    @property
+    def rpc_url(self) -> str:
+        return self.hl_rpc_url

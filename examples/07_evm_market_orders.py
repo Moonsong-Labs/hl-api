@@ -30,15 +30,21 @@ def main() -> None:
     if not private_key:
         raise ValueError("PRIVATE_KEY not found in environment variables")
 
-    rpc_url = os.getenv("HYPER_EVM_RPC", "https://rpc.hyperliquid-testnet.xyz/evm")
-    strategy_address = os.getenv("HYPERLIQUID_STRATEGY")
-    if not strategy_address:
+    hl_rpc_url = os.getenv("HYPER_EVM_RPC", "https://rpc.hyperliquid-testnet.xyz/evm")
+    mn_rpc_url = os.getenv("HL_EVM_RPC", "https://sepolia.drpc.org")
+    hl_strategy_address = os.getenv("HYPERLIQUID_STRATEGY")
+    if not hl_strategy_address:
         raise ValueError("HYPERLIQUID_STRATEGY not found in environment variables")
+    bridge_address = os.getenv("BRIDGE_STRATEGY")
+    if not bridge_address:
+        raise ValueError("BRIDGE_STRATEGY not found in environment variables")
 
     client = HLProtocolEVM(
         private_key=private_key,
-        rpc_url=rpc_url,
-        strategy_address=strategy_address,
+        hl_rpc_url=hl_rpc_url,
+        mn_rpc_url=mn_rpc_url,
+        hl_strategy_address=hl_strategy_address,
+        bridge_strategy_address=bridge_address,
     )
 
     client.connect()

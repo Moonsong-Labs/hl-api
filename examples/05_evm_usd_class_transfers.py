@@ -52,16 +52,20 @@ def main() -> None:
     """Move USD from perp to spot and back via HyperLiquid strategy contract."""
 
     private_key = _require_env("PRIVATE_KEY")
-    rpc_url = os.getenv("HYPER_EVM_RPC", "https://rpc.hyperliquid-testnet.xyz/evm")
-    strategy_address = _require_env("HYPERLIQUID_STRATEGY")
+    hl_rpc_url = os.getenv("HYPER_EVM_RPC", "https://rpc.hyperliquid-testnet.xyz/evm")
+    mn_rpc_url = os.getenv("HL_EVM_RPC", "https://sepolia.drpc.org")
+    hl_strategy_address = _require_env("HYPERLIQUID_STRATEGY")
+    bridge_address = _require_env("BRIDGE_STRATEGY")
 
     client = HLProtocolEVM(
         private_key=private_key,
-        rpc_url=rpc_url,
-        strategy_address=strategy_address,
+        hl_rpc_url=hl_rpc_url,
+        mn_rpc_url=mn_rpc_url,
+        hl_strategy_address=hl_strategy_address,
+        bridge_strategy_address=bridge_address,
     )
 
-    logging.info("Connecting to HyperLiquid EVM at %s", rpc_url)
+    logging.info("Connecting to HyperLiquid EVM at %s", hl_rpc_url)
     client.connect()
     try:
         logging.info("Transferring $%s from perp to spot", TRANSFER_AMOUNT)
