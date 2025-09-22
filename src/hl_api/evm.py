@@ -99,9 +99,7 @@ class HLProtocolEVM(HLProtocolBase):
         self.bridge_strategy_address = cast(
             ChecksumAddress, validate_address(bridge_strategy_address)
         )
-        self._mainnet_bridge_address: ChecksumAddress | None = None
         self.corewriter_address = cast(ChecksumAddress, validate_address(Precompile.COREWRITER))
-
         self._verification_payload_url = verification_payload_url
         self._verification_payload_resolver: VerificationResolver | None = (
             verification_payload_resolver
@@ -124,11 +122,10 @@ class HLProtocolEVM(HLProtocolBase):
         self._mainnet_web3: Web3 | None = None
         self._account: LocalAccount | None = None
         self._strategy_contract: Contract | None = None
+        self._bridge_strategy_contract: Contract | None = None
         self._chain_id: int | None = None
         self._connected = False
         self._subvault_address: ChecksumAddress | None = None
-        self._hyper_bridge_contract: Contract | None = None
-        self._mainnet_bridge_contract: Contract | None = None
         self._session = requests.Session()
         self._asset_by_symbol: dict[str, int] = {}
         self._token_index_by_symbol: dict[str, int] = {}
@@ -163,8 +160,7 @@ class HLProtocolEVM(HLProtocolBase):
             self._strategy_contract = contract
             self._chain_id = hl_web3.eth.chain_id
             self._subvault_address = None
-            self._hyper_bridge_contract = None
-            self._mainnet_bridge_contract = None
+            self._bridge_strategy_contract = None
 
             mn_provider, mn_web3 = self._build_web3_provider(
                 self.mn_rpc_url, network_name="Mainnet"
@@ -225,8 +221,7 @@ class HLProtocolEVM(HLProtocolBase):
         self._chain_id = None
         self._connected = False
         self._subvault_address = None
-        self._hyper_bridge_contract = None
-        self._mainnet_bridge_contract = None
+        self._bridge_strategy_contract = None
         # Clear lru_cache for metadata methods
         self._resolve_perp_sz_decimals.cache_clear()
         self._resolve_spot_base_sz_decimals.cache_clear()
@@ -807,7 +802,7 @@ class HLProtocolEVM(HLProtocolBase):
                 raw=raw_context,
             )
 
-        claim_tx_hash = claim_tx.hex()
+        claim_tx_hash = claim_tx.to_0x_hex()
         self._stage(direction, "claim submitted", tx=claim_tx_hash)
         claim_receipt = (
             destination_web3.eth.wait_for_transaction_receipt(
@@ -961,29 +956,16 @@ class HLProtocolEVM(HLProtocolBase):
 
     def _ensure_bridge_contract(self, chain: str) -> Contract:
         if chain == "hyper":
-            if self._hyper_bridge_contract is None:
-                web3 = self.hyperliquid_web3
-                self._hyper_bridge_contract = web3.eth.contract(
+            return self.strategy_contract
+
+        if chain == "mainnet":
+            if self._bridge_strategy_contract is None:
+                web3 = self.mainnet_web3
+                self._bridge_strategy_contract = web3.eth.contract(
                     address=self.bridge_strategy_address,
                     abi=HyperliquidBridgeStrategy_abi,
                 )
-            return self._hyper_bridge_contract
-
-        if chain == "mainnet":
-            if self._mainnet_bridge_address is None:
-                raise ValidationError(
-                    "Mainnet bridge strategy address is not configured",
-                    field="bridge_strategy_address",
-                )
-            address = self._mainnet_bridge_address
-            assert address is not None
-            if self._mainnet_bridge_contract is None:
-                web3 = self.mainnet_web3
-                self._mainnet_bridge_contract = web3.eth.contract(
-                    address=address,
-                    abi=HyperliquidBridgeStrategy_abi,
-                )
-            return self._mainnet_bridge_contract
+            return self._bridge_strategy_contract
 
         raise ValidationError("Unknown bridge chain", field="chain", value=chain)
 
@@ -1580,7 +1562,7 @@ class HLProtocolEVM(HLProtocolBase):
         logger.info("Dispatching %s via %s", action, function_name)
 
         tx_hash = contract_function.transact()
-        logger.info("Transaction sent for action=%s hash=%s", action, tx_hash.hex())
+        logger.info("Transaction sent for action=%s hash=%s", action, tx_hash.to_0x_hex())
 
         receipt = (
             web3.eth.wait_for_transaction_receipt(tx_hash, timeout=self._receipt_timeout)
@@ -1592,12 +1574,12 @@ class HLProtocolEVM(HLProtocolBase):
             logger.info(
                 "Transaction confirmed for action=%s hash=%s block=%s",
                 action,
-                tx_hash.hex(),
+                tx_hash.to_0x_hex(),
                 getattr(receipt, "blockNumber", None),
             )
 
         return {
-            "tx_hash": tx_hash.hex(),
+            "tx_hash": tx_hash.to_0x_hex(),
             "action": action,
             "context": dict(context),
             "receipt": serialise_receipt(receipt) if receipt else None,

@@ -49,7 +49,7 @@ def _log_bridge_result(label: str, response: BridgeResponse) -> None:
 def main() -> None:
     private_key = _require_env("PRIVATE_KEY")
     hl_strategy_address = _require_env("HYPERLIQUID_STRATEGY")
-    mainnet_bridge_address = _require_env("BRIDGE_STRATEGY")
+    bridge_strategy_address = _require_env("BRIDGE_STRATEGY")
 
     hl_rpc_url = os.getenv("HYPER_EVM_RPC", "https://rpc.hyperliquid-testnet.xyz/evm")
     mn_rpc_url = os.getenv("HL_EVM_RPC", "https://sepolia.drpc.org")
@@ -62,7 +62,7 @@ def main() -> None:
         hl_rpc_url=hl_rpc_url,
         mn_rpc_url=mn_rpc_url,
         hl_strategy_address=hl_strategy_address,
-        bridge_strategy_address=mainnet_bridge_address,
+        bridge_strategy_address=bridge_strategy_address,
         testnet=testnet,
     )
 
