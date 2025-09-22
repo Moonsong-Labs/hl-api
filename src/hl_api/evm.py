@@ -173,7 +173,7 @@ class HLProtocolEVM(HLProtocolBase):
             except Exception:
                 self._hype_token_index = None
 
-            self._subvault_address = self._load_and_validate_subvault()
+            self._subvault_address = self.subvault_address
             self._connected = True
 
         except ValidationError:
@@ -544,13 +544,15 @@ class HLProtocolEVM(HLProtocolBase):
     # Helpers
     # ------------------------------------------------------------------
     def _ensure_connected(self) -> None:
-        if (
-            not self.is_connected()
-            or self._web3 is None
-            or self._account is None
-            or self._strategy_contract is None
-        ):
+        if not self.is_connected():
             raise NetworkError("EVM connector is not connected", endpoint=self.rpc_url)
+
+        try:
+            self.hyperliquid_web3
+            self.account
+            self.strategy_contract
+        except NetworkError as exc:
+            raise NetworkError("EVM connector is not connected", endpoint=self.rpc_url) from exc
 
     def _call_l1_read_precompile(
         self,
@@ -836,27 +838,22 @@ class HLProtocolEVM(HLProtocolBase):
             return self._subvault_address
 
         try:
-            contract = self.strategy_contract
+            return self.subvault_address
+        except ValidationError as exc:
+            raise NetworkError(str(exc), endpoint=self.rpc_url, details=exc.details) from exc
         except NetworkError:
-            contract = None
+            pass
+        except Exception as exc:  # pragma: no cover - defensive
+            raise NetworkError(
+                "Unexpected failure resolving strategy subvault",
+                endpoint=self.rpc_url,
+                details={"error": str(exc)},
+            ) from exc
 
-        if contract is not None:
-            try:
-                self._subvault_address = self._load_and_validate_subvault()
-                return self._subvault_address
-            except ValidationError as exc:
-                raise NetworkError(str(exc), endpoint=self.rpc_url, details=exc.details) from exc
-            except NetworkError:
-                raise
-            except Exception as exc:  # pragma: no cover - defensive
-                raise NetworkError(
-                    "Unexpected failure resolving strategy subvault",
-                    endpoint=self.rpc_url,
-                    details={"error": str(exc)},
-                ) from exc
-
-        if self._account is not None:
-            return self._account.address
+        try:
+            return self.account.address
+        except NetworkError:
+            pass
 
         raise NetworkError("Trading account address unavailable", endpoint=self.rpc_url)
 
@@ -1135,6 +1132,14 @@ class HLProtocolEVM(HLProtocolBase):
         if self._mainnet_web3 is None:
             raise NetworkError("Mainnet Web3 provider is not connected", endpoint=self.mn_rpc_url)
         return self._mainnet_web3
+
+    @property
+    def subvault_address(self) -> ChecksumAddress:
+        if self._subvault_address is not None:
+            return self._subvault_address
+
+        self._subvault_address = self._load_and_validate_subvault()
+        return self._subvault_address
 
     @property
     def rpc_url(self) -> str:
