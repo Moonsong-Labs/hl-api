@@ -16,11 +16,11 @@ VerificationResolver = Callable[
 
 DEFAULT_REQUEST_TIMEOUT = 10.0
 DEFAULT_RECEIPT_TIMEOUT = 120.0
-DEFAULT_IRIS_POLL_INTERVAL = 6.0
+DEFAULT_IRIS_POLL_INTERVAL = 2.0
 DEFAULT_IRIS_MAX_POLLS = 100
-DEFAULT_CCTP_FINALITY_THRESHOLD = 10
-IRIS_API_SANDBOX = "https://iris-sandbox.layerzero-api.com"
-IRIS_API_PROD = "https://iris.layerzero-api.com"
+DEFAULT_CCTP_FINALITY_THRESHOLD = 1000
+IRIS_API_SANDBOX = "https://iris-api-sandbox.circle.com"
+IRIS_API_PROD = "https://iris-api.circle.com"
 
 
 @dataclass(frozen=True)

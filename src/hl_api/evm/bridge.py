@@ -355,6 +355,7 @@ class CCTPBridge:
 
     def _fetch_cctp_fee(self, amount_units: int, src_domain: int, dest_domain: int) -> int:
         url = f"{self._iris_base_url}/v2/burn/USDC/fees/{src_domain}/{dest_domain}"
+        logger.info("Fetching CCTP fee quote from IRIS: %s", url)
         response = self._session.get(url, timeout=self._config.request_timeout)
         response.raise_for_status()
         payload = response.json()
@@ -409,16 +410,43 @@ class CCTPBridge:
         )
 
         for attempt in range(self._iris_max_polls):
-            response = self._session.get(url, timeout=self._config.request_timeout)
+            try:
+                response = self._session.get(url, timeout=self._config.request_timeout)
+            except requests.RequestException as exc:  # pragma: no cover - network flake
+                logger.debug("IRIS poll error (attempt %s/%s): %s", attempt + 1, self._iris_max_polls, exc)
+                time.sleep(self._iris_poll_interval)
+                continue
+
+            if response.status_code == 404:
+                logger.debug(
+                    "IRIS attestation not yet available (404) for %s on attempt %s/%s",
+                    tx_hash,
+                    attempt + 1,
+                    self._iris_max_polls,
+                )
+                time.sleep(self._iris_poll_interval)
+                continue
+
             response.raise_for_status()
             payload = response.json()
             messages = self._extract_iris_messages(payload)
             if messages:
-                record = messages[0]
-                message = record.get("message")
-                attestation = record.get("attestation")
-                if isinstance(message, str) and isinstance(attestation, str):
-                    return message, attestation
+                for record in messages:
+                    status = str(record.get("status", "")).lower()
+                    if status and status != "complete":
+                        logger.debug(
+                            "IRIS attestation still %s for %s (attempt %s/%s)",
+                            status,
+                            tx_hash,
+                            attempt + 1,
+                            self._iris_max_polls,
+                        )
+                        continue
+
+                    message = record.get("message")
+                    attestation = record.get("attestation")
+                    if isinstance(message, str) and isinstance(attestation, str):
+                        return message, attestation
 
             time.sleep(self._iris_poll_interval)
 

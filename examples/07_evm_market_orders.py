@@ -49,8 +49,6 @@ def main() -> None:
 
     client.connect()
     try:
-        client.load_asset_metadata_from_info()
-
         mid_price = Decimal(str(client.get_market_price(ASSET_SYMBOL)))
         approx_usd = (mid_price * Decimal(str(SIZE))).quantize(Decimal("0.01"))
 

@@ -47,8 +47,6 @@ def main() -> None:
 
     hl.connect()
     try:
-        hl.load_asset_metadata_from_info()
-
         cloid = generate_cloid()
         print(
             f"Placing limit order: asset={ASSET_SYMBOL} size={SIZE} at ${LIMIT_PRICE} (cloid={cloid})"
