@@ -212,9 +212,7 @@ class HLProtocolCore(HLProtocolBase):
             )
 
             if result.get("status") == "err":
-                logger.error(
-                    "Market close position request failed: %s", result["response"]
-                )
+                logger.error("Market close position request failed: %s", result["response"])
 
             return OrderResponse(
                 success=True,

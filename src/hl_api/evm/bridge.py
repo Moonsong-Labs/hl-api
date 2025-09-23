@@ -413,7 +413,9 @@ class CCTPBridge:
             try:
                 response = self._session.get(url, timeout=self._config.request_timeout)
             except requests.RequestException as exc:  # pragma: no cover - network flake
-                logger.debug("IRIS poll error (attempt %s/%s): %s", attempt + 1, self._iris_max_polls, exc)
+                logger.debug(
+                    "IRIS poll error (attempt %s/%s): %s", attempt + 1, self._iris_max_polls, exc
+                )
                 time.sleep(self._iris_poll_interval)
                 continue
 
