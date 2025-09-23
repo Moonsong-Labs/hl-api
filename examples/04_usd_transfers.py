@@ -34,7 +34,7 @@ def example_usd_transfers():
 
     hl_core.connect()
 
-    perp_to_spot_response = hl_core.usd_class_transfer_to_spot(0.23)
+    perp_to_spot_response = hl_core.usd_class_transfer_to_spot(4)
 
     if perp_to_spot_response.success:
         print("✅ Transfer to spot successful!")
@@ -45,7 +45,7 @@ def example_usd_transfers():
 
     time.sleep(1)
 
-    spot_to_perp_response = hl_core.usd_class_transfer_to_perp(0.2)
+    spot_to_perp_response = hl_core.usd_class_transfer_to_perp(4)
 
     if spot_to_perp_response.success:
         print("✅ Transfer to perp successful!")
@@ -62,7 +62,7 @@ def main():
     """Run USD class transfer examples."""
 
     print("=" * 50)
-    print("HyperLiquid API - Example 03")
+    print("HyperLiquid API - Example 04")
     print("💸 USD Class Transfers")
     print("=" * 60)
 
