@@ -58,25 +58,25 @@ finally:
 
 The EVM connector routes CoreWriter actions through a deployed
 `HyperliquidStrategy` contract and is intended for vault integrations.
-Provide the strategy address during construction and optionally point the
-client at JSON resources for metadata and verification payloads.
+Provide the strategy address during construction.
 
 ```python
 import os
 
 from hl_api import HLProtocolEVM
 
+
 hl = HLProtocolEVM(
     private_key=os.environ["PRIVATE_KEY"],
-    hl_rpc_url=os.environ.get("HYPER_EVM_RPC", "https://rpc.hyperliquid.xyz"),
-    mn_rpc_url=os.environ.get("HL_EVM_RPC", "https://ethereum.publicnode.com"),
+    hl_rpc_url = os.getenv("HYPER_EVM_RPC", "https://rpc.hyperliquid-testnet.xyz/evm")
+    mn_rpc_url = os.getenv("HL_EVM_RPC", "https://sepolia.drpc.org"),
     hl_strategy_address=os.environ["HYPERLIQUID_STRATEGY"],
-    bridge_strategy_address=os.environ["BRIDGE_STRATEGY"],
-    verification_payload_url=os.environ.get("HYPERLIQUID_VERIFICATION_URL"),
+    bridge_strategy_address=os.environ["HYPERLIQUID_BRIDGE_STRATEGY"],
 )
 
+
 hl.connect()
-hl.load_asset_metadata_from_info()
+
 try:
     response = hl.limit_order(
         asset="BTC",
@@ -94,9 +94,7 @@ Key parameters:
 
 - `hl_strategy_address` (required) – deployed `HyperliquidStrategy` contract on HyperLiquid EVM.
 - `bridge_strategy_address` (required) – contract used for bridging to mainnet when needed by strategy flows.
-- `verification_payload_url` (optional) – URL template returning verification payload JSON;
   `{action}` is substituted with the method name.
-- `verification_payload_resolver` (optional) – Python callable to generate custom payloads.
 
 > [!NOTE]
 > Some CoreWriter actions (delegation, staking, builder fees, direct vault
@@ -115,7 +113,7 @@ To test with HyperLiquid Testnet, you need a funded account. The testnet faucet 
 
 2. **Fund Arbitrum Account**: Get USDC (≥5) and ETH (≥0.01) on Arbitrum
 
-3. **Enable Trading**: 
+3. **Enable Trading**:
    - Connect to [HyperLiquid mainnet](https://app.hyperliquid.xyz/trade)
    - Deposit 5 USDC from Arbitrum using "Enable trading"
 
@@ -142,7 +140,7 @@ uv run examples/01_place_and_cancel_order.py
 
 Expected output:
 
-```sh
+```bash
 ==================================================
 HyperLiquid API - Example 01
 📈 Place & Cancel Limit Orders
@@ -151,6 +149,46 @@ Order placed successfully!
 Order ID: 39205192325
 Client Order ID: 0x767f340108a94fbab418d5f6b2fd5ff5
 Order cancelled successfully!
+```
+
+```bash
+uv run examples/08_evm_cctp_roundtrip.py  
+```
+
+Expected output:
+
+```bash
+2025-09-23 15:50:51,129 INFO hl_api.evm.connections: Connected to HyperLiquid RPC at https://rpc.hyperliquid-testnet.xyz/evm
+2025-09-23 15:50:51,129 INFO hl_api.evm.connections: Connected to mainnet RPC at https://sepolia.drpc.org
+2025-09-23 15:50:51,129 INFO cctp_roundtrip: Bridging 10.000000 USDC from mainnet to HyperEVM
+2025-09-23 15:50:51,133 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: prepare amount (amount=10.000000, units=10000000)
+2025-09-23 15:50:51,133 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: fetch fee quote (source=0, dest=19)
+2025-09-23 15:50:51,133 INFO hl_api.evm.bridge: Fetching CCTP fee quote from IRIS: https://iris-api-sandbox.circle.com/v2/burn/USDC/fees/0/19
+2025-09-23 15:50:51,326 INFO hl_api.evm.bridge: CCTP fee quote 0 -> 19: bps=1 maxFee=1000
+2025-09-23 15:50:51,326 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: submit burn transaction
+2025-09-23 15:50:51,910 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: burn submitted (tx=0xd7ef6067f7cc2dbccca5c78860c2805beee289891950697cf5f634ab3b40629d)
+2025-09-23 15:51:01,608 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: poll IRIS (domain=0, tx=0xd7ef6067f7cc2dbccca5c78860c2805beee289891950697cf5f634ab3b40629d, max_polls=100, interval=2.0)
+2025-09-23 15:51:21,183 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: submit claim transaction
+2025-09-23 15:51:23,297 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: claim submitted (tx=0xccffa911929702a05bf1c1ed565baee6937179c4af6b10ccd90b2111932608c4)
+2025-09-23 15:51:23,512 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: bridge complete (burn_tx=0xd7ef6067f7cc2dbccca5c78860c2805beee289891950697cf5f634ab3b40629d, claim_tx=0xccffa911929702a05bf1c1ed565baee6937179c4af6b10ccd90b2111932608c4)
+2025-09-23 15:51:23,512 INFO cctp_roundtrip: Mainnet -> HyperEVM succeeded (amount 10.000000 USDC)
+2025-09-23 15:51:23,512 INFO cctp_roundtrip:   burn tx: 0xd7ef6067f7cc2dbccca5c78860c2805beee289891950697cf5f634ab3b40629d
+2025-09-23 15:51:23,512 INFO cctp_roundtrip:   claim tx: 0xccffa911929702a05bf1c1ed565baee6937179c4af6b10ccd90b2111932608c4
+2025-09-23 15:51:23,512 INFO cctp_roundtrip: Bridging 10.000000 USDC from HyperEVM back to mainnet
+2025-09-23 15:51:23,512 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: prepare amount (amount=10.000000, units=10000000)
+2025-09-23 15:51:23,512 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: fetch fee quote (source=19, dest=0)
+2025-09-23 15:51:23,512 INFO hl_api.evm.bridge: Fetching CCTP fee quote from IRIS: https://iris-api-sandbox.circle.com/v2/burn/USDC/fees/19/0
+2025-09-23 15:51:23,643 INFO hl_api.evm.bridge: CCTP fee quote 19 -> 0: bps=0 maxFee=0
+2025-09-23 15:51:23,643 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: submit burn transaction
+2025-09-23 15:51:26,316 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: burn submitted (tx=0x88cc34bb1241adbb40520c74d6812ce395f5faaacbb126c10385361f9638d1bd)
+2025-09-23 15:51:26,531 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: poll IRIS (domain=19, tx=0x88cc34bb1241adbb40520c74d6812ce395f5faaacbb126c10385361f9638d1bd, max_polls=100, interval=2.0)
+2025-09-23 15:51:33,018 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: submit claim transaction
+2025-09-23 15:51:33,458 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: claim submitted (tx=0x37eab9e7ebb68ec2dc581042402bf54d5d05a7324a680e25a8705d9dd5a5dd2e)
+2025-09-23 15:51:36,532 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: bridge complete (burn_tx=0x88cc34bb1241adbb40520c74d6812ce395f5faaacbb126c10385361f9638d1bd, claim_tx=0x37eab9e7ebb68ec2dc581042402bf54d5d05a7324a680e25a8705d9dd5a5dd2e)
+2025-09-23 15:51:36,532 INFO cctp_roundtrip: HyperEVM -> Mainnet succeeded (amount 10.000000 USDC)
+2025-09-23 15:51:36,532 INFO cctp_roundtrip:   burn tx: 0x88cc34bb1241adbb40520c74d6812ce395f5faaacbb126c10385361f9638d1bd
+2025-09-23 15:51:36,532 INFO cctp_roundtrip:   claim tx: 0x37eab9e7ebb68ec2dc581042402bf54d5d05a7324a680e25a8705d9dd5a5dd2e
+2025-09-23 15:51:36,532 INFO cctp_roundtrip: Disconnected
 ```
 
 ## Supported Operations
@@ -172,27 +210,7 @@ All operations correspond to CoreWriter precompile actions:
 | `finalize_subaccount` | 11 | Finalize subaccount |
 | `approve_builder_fee` | 12 | Approve builder fee |
 
-## Error Handling
-
-```python
-from hl_api import (
-    HLProtocolError,
-    OrderError,
-    ValidationError
-)
-
-try:
-    response = hl.limit_order(...)
-except ValidationError as e:
-    print(f"Invalid input: {e.message}")
-    print(f"Field: {e.field}, Value: {e.value}")
-except OrderError as e:
-    print(f"Order failed: {e.message}")
-except HLProtocolError as e:
-    print(f"Protocol error: {e.message}")
-```
-
-## Examples
+## Integration
 
 ### Place & cancel a limit order
 
@@ -255,59 +273,3 @@ hl.usd_class_transfer_to_perp(0.2)
 Args:
 
 - `amount` – USD to move between perp and spot vaults; see [portfolio docs](https://docs.hyperliquid.xyz/core/portfolio)
-
-## Architecture
-
-```sh
-HLProtocolBase (Abstract)
-    ├── HLProtocolCore (HyperLiquid SDK implementation)
-    └── HLProtocolEVM (CoreWriter precompile implementation)
-```
-
-### API
-
-> [!NOTE]  
-> This useful for when you want to check via the REST API certain values, consult the docs for [INFO](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint) and [EXCHANGE](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint) endpoints. This is not a replacement for this API lib, but can be used for manual inspection of values.
-
-#### Get all Mids
-
-```sh
-curl --location 'https://api.hyperliquid-testnet.xyz/info' \
---header 'Content-Type: application/json' \
---data '{
-    "type": "allMids",
-    "dex": ""
-}'
-```
-
-#### Get User Balance
-
-```sh
-curl --location 'https://api.hyperliquid-testnet.xyz/info' \
---header 'Content-Type: application/json' \
---data '{
-    "type": "spotClearinghouseState",
-    "user":"0xb764428a29EAEbe8e2301F5924746F818b331F5A"
-}'
-```
-
-#### Get Perp Info
-
-```sh
-curl --location 'https://api.hyperliquid-testnet.xyz/info' \
---header 'Content-Type: application/json' \
---data '{
-    "type": "metaAndAssetCtxs"
-}'
-```
-
-#### Get Orderbook snapshot
-
-```sh
-curl --location 'https://api.hyperliquid-testnet.xyz/info' \
---header 'Content-Type: application/json' \
---data '{
-    "type": "l2Book",
-    "coin": "FARTCOIN"
-}'
-```
