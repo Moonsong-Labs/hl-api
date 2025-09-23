@@ -4,16 +4,15 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from typing import Any
 
 import requests
-from web3 import Web3
 
+from ..evm_utils import serialise_receipt
 from ..exceptions import NetworkError, ValidationError
 from ..types import BridgeResponse, VerificationPayload
-from ..evm_utils import serialise_receipt
 from .config import BridgeConfig, EVMClientConfig
 from .connections import Web3Connections
 
