@@ -98,28 +98,6 @@ def basic_price_fetching():
 
             print(f"\nTotal Portfolio Value: ${total_value:,.2f}")
 
-        # Example 4: Error handling demonstration
-        print("\n4. Error Handling Examples")
-        print("-" * 30)
-
-        # Try fetching an invalid asset
-        try:
-            invalid_price = hl_core.get_market_price("INVALID_ASSET")
-            print(f"Invalid asset price: {invalid_price}")
-        except ValueError as e:
-            print(f"✅ Correctly caught error for invalid asset: {e}")
-        except Exception as e:
-            print(f"❌ Unexpected error type: {e}")
-
-        # Try fetching with empty string
-        try:
-            empty_price = hl_core.get_market_price("")
-            print(f"Empty asset price: {empty_price}")
-        except ValueError as e:
-            print(f"✅ Correctly caught error for empty asset: {e}")
-        except Exception as e:
-            print(f"❌ Unexpected error type: {e}")
-
     except Exception as e:
         logger.error(f"Error in basic price fetching: {e}")
     finally:

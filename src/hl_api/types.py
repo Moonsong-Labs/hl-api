@@ -138,6 +138,20 @@ class ApprovalResponse:
     raw_response: dict | None = None
 
 
+@dataclass
+class BridgeResponse:
+    """Response from CCTPv2 bridge operations."""
+
+    success: bool
+    amount: float | None = None
+    burn_tx_hash: str | None = None
+    claim_tx_hash: str | None = None
+    message: str | None = None
+    attestation: str | None = None
+    error: str | None = None
+    raw_response: dict[str, Any] | None = None
+
+
 # Type aliases for clarity
 Price = int | float  # Will be converted to uint64 internally
 Size = int | float  # Will be converted to uint64 internally

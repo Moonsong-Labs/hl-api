@@ -15,8 +15,10 @@ from hl_api.utils import format_price_for_api, price_to_uint64
 def api() -> HLProtocolEVM:
     client = HLProtocolEVM(
         private_key="0x" + "1" * 64,
-        rpc_url="http://localhost:8545",
-        strategy_address="0x0000000000000000000000000000000000000001",
+        hl_rpc_url="http://localhost:8545",
+        mn_rpc_url="http://localhost:9545",
+        hl_strategy_address="0x0000000000000000000000000000000000000001",
+        bridge_strategy_address="0x0000000000000000000000000000000000000002",
     )
 
     client._ensure_connected = MagicMock()

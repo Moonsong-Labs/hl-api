@@ -68,8 +68,10 @@ from hl_api import HLProtocolEVM
 
 hl = HLProtocolEVM(
     private_key=os.environ["PRIVATE_KEY"],
-    rpc_url=os.environ.get("HYPER_EVM_RPC", "https://rpc.hyperliquid.xyz"),
-    strategy_address=os.environ["HYPERLIQUID_STRATEGY"],
+    hl_rpc_url=os.environ.get("HYPER_EVM_RPC", "https://rpc.hyperliquid.xyz"),
+    mn_rpc_url=os.environ.get("HL_EVM_RPC", "https://ethereum.publicnode.com"),
+    hl_strategy_address=os.environ["HYPERLIQUID_STRATEGY"],
+    bridge_strategy_address=os.environ["BRIDGE_STRATEGY"],
     verification_payload_url=os.environ.get("HYPERLIQUID_VERIFICATION_URL"),
 )
 
@@ -90,8 +92,8 @@ finally:
 
 Key parameters:
 
-- `strategy_address` (required) – deployed `HyperliquidStrategy` contract.
-- `load_asset_metadata_from_url(url)` (optional) – populate symbol/token indices after construction.
+- `hl_strategy_address` (required) – deployed `HyperliquidStrategy` contract on HyperLiquid EVM.
+- `bridge_strategy_address` (required) – contract used for bridging to mainnet when needed by strategy flows.
 - `verification_payload_url` (optional) – URL template returning verification payload JSON;
   `{action}` is substituted with the method name.
 - `verification_payload_resolver` (optional) – Python callable to generate custom payloads.

@@ -19,8 +19,10 @@ def test_market_order_price_formatting():
     # Create instance with dummy values (we'll mock everything anyway)
     api = HLProtocolEVM(
         private_key="0x" + "0" * 64,  # Dummy private key
-        rpc_url="http://localhost:8545",  # Dummy RPC URL
-        strategy_address="0x" + "0" * 40,  # Dummy address
+        hl_rpc_url="http://localhost:8545",  # Dummy HyperLiquid RPC URL
+        mn_rpc_url="http://localhost:9545",  # Dummy mainnet RPC URL
+        hl_strategy_address="0x" + "0" * 40,  # Dummy HyperLiquid strategy address
+        bridge_strategy_address="0x0000000000000000000000000000000000000001",  # Dummy bridge address
     )
 
     # Mock the internal methods to avoid actual network calls
