@@ -354,7 +354,7 @@ class CCTPBridge:
 
     def _fetch_cctp_fee(self, amount_units: int, src_domain: int, dest_domain: int) -> int:
         url = f"{self._iris_base_url}/v2/burn/USDC/fees/{src_domain}/{dest_domain}"
-        logger.info("Fetching CCTP fee quote from IRIS: %s", url)
+        logger.debug("Fetching CCTP fee quote from IRIS: %s", url)
         response = self._session.get(url, timeout=self._config.request_timeout)
         response.raise_for_status()
         payload = response.json()
@@ -478,7 +478,7 @@ class CCTPBridge:
         if details:
             formatted = ", ".join(f"{key}={value}" for key, value in details.items())
             suffix = f" ({formatted})"
-        logger.info("Stage CCTP [%s]: %s%s", direction, message, suffix)
+        logger.debug("Stage CCTP [%s]: %s%s", direction, message, suffix)
 
     def _bridge_failure(
         self,

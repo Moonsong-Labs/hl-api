@@ -158,37 +158,19 @@ uv run examples/08_evm_cctp_roundtrip.py
 Expected output:
 
 ```bash
-2025-09-23 15:50:51,129 INFO hl_api.evm.connections: Connected to HyperLiquid RPC at https://rpc.hyperliquid-testnet.xyz/evm
-2025-09-23 15:50:51,129 INFO hl_api.evm.connections: Connected to mainnet RPC at https://sepolia.drpc.org
-2025-09-23 15:50:51,129 INFO cctp_roundtrip: Bridging 10.000000 USDC from mainnet to HyperEVM
-2025-09-23 15:50:51,133 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: prepare amount (amount=10.000000, units=10000000)
-2025-09-23 15:50:51,133 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: fetch fee quote (source=0, dest=19)
-2025-09-23 15:50:51,133 INFO hl_api.evm.bridge: Fetching CCTP fee quote from IRIS: https://iris-api-sandbox.circle.com/v2/burn/USDC/fees/0/19
-2025-09-23 15:50:51,326 INFO hl_api.evm.bridge: CCTP fee quote 0 -> 19: bps=1 maxFee=1000
-2025-09-23 15:50:51,326 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: submit burn transaction
-2025-09-23 15:50:51,910 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: burn submitted (tx=0xd7ef6067f7cc2dbccca5c78860c2805beee289891950697cf5f634ab3b40629d)
-2025-09-23 15:51:01,608 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: poll IRIS (domain=0, tx=0xd7ef6067f7cc2dbccca5c78860c2805beee289891950697cf5f634ab3b40629d, max_polls=100, interval=2.0)
-2025-09-23 15:51:21,183 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: submit claim transaction
-2025-09-23 15:51:23,297 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: claim submitted (tx=0xccffa911929702a05bf1c1ed565baee6937179c4af6b10ccd90b2111932608c4)
-2025-09-23 15:51:23,512 INFO hl_api.evm.bridge: Stage CCTP [mainnet_to_hyper]: bridge complete (burn_tx=0xd7ef6067f7cc2dbccca5c78860c2805beee289891950697cf5f634ab3b40629d, claim_tx=0xccffa911929702a05bf1c1ed565baee6937179c4af6b10ccd90b2111932608c4)
-2025-09-23 15:51:23,512 INFO cctp_roundtrip: Mainnet -> HyperEVM succeeded (amount 10.000000 USDC)
-2025-09-23 15:51:23,512 INFO cctp_roundtrip:   burn tx: 0xd7ef6067f7cc2dbccca5c78860c2805beee289891950697cf5f634ab3b40629d
-2025-09-23 15:51:23,512 INFO cctp_roundtrip:   claim tx: 0xccffa911929702a05bf1c1ed565baee6937179c4af6b10ccd90b2111932608c4
-2025-09-23 15:51:23,512 INFO cctp_roundtrip: Bridging 10.000000 USDC from HyperEVM back to mainnet
-2025-09-23 15:51:23,512 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: prepare amount (amount=10.000000, units=10000000)
-2025-09-23 15:51:23,512 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: fetch fee quote (source=19, dest=0)
-2025-09-23 15:51:23,512 INFO hl_api.evm.bridge: Fetching CCTP fee quote from IRIS: https://iris-api-sandbox.circle.com/v2/burn/USDC/fees/19/0
-2025-09-23 15:51:23,643 INFO hl_api.evm.bridge: CCTP fee quote 19 -> 0: bps=0 maxFee=0
-2025-09-23 15:51:23,643 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: submit burn transaction
-2025-09-23 15:51:26,316 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: burn submitted (tx=0x88cc34bb1241adbb40520c74d6812ce395f5faaacbb126c10385361f9638d1bd)
-2025-09-23 15:51:26,531 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: poll IRIS (domain=19, tx=0x88cc34bb1241adbb40520c74d6812ce395f5faaacbb126c10385361f9638d1bd, max_polls=100, interval=2.0)
-2025-09-23 15:51:33,018 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: submit claim transaction
-2025-09-23 15:51:33,458 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: claim submitted (tx=0x37eab9e7ebb68ec2dc581042402bf54d5d05a7324a680e25a8705d9dd5a5dd2e)
-2025-09-23 15:51:36,532 INFO hl_api.evm.bridge: Stage CCTP [hyper_to_mainnet]: bridge complete (burn_tx=0x88cc34bb1241adbb40520c74d6812ce395f5faaacbb126c10385361f9638d1bd, claim_tx=0x37eab9e7ebb68ec2dc581042402bf54d5d05a7324a680e25a8705d9dd5a5dd2e)
-2025-09-23 15:51:36,532 INFO cctp_roundtrip: HyperEVM -> Mainnet succeeded (amount 10.000000 USDC)
-2025-09-23 15:51:36,532 INFO cctp_roundtrip:   burn tx: 0x88cc34bb1241adbb40520c74d6812ce395f5faaacbb126c10385361f9638d1bd
-2025-09-23 15:51:36,532 INFO cctp_roundtrip:   claim tx: 0x37eab9e7ebb68ec2dc581042402bf54d5d05a7324a680e25a8705d9dd5a5dd2e
-2025-09-23 15:51:36,532 INFO cctp_roundtrip: Disconnected
+2025-09-23 15:56:02,149 INFO hl_api.evm.connections: Connected to HyperLiquid RPC at https://rpc.hyperliquid-testnet.xyz/evm
+2025-09-23 15:56:02,149 INFO hl_api.evm.connections: Connected to mainnet RPC at https://sepolia.drpc.org
+2025-09-23 15:56:02,149 INFO cctp_roundtrip: Bridging 10.000000 USDC from mainnet to HyperEVM
+2025-09-23 15:56:02,380 INFO hl_api.evm.bridge: CCTP fee quote 0 -> 19: bps=1 maxFee=1000
+2025-09-23 15:56:47,439 INFO cctp_roundtrip: Mainnet -> HyperEVM succeeded (amount 10.000000 USDC)
+2025-09-23 15:56:47,439 INFO cctp_roundtrip:   burn tx: 0xef00e08df0b0147f16521ccc3d9d6f032c6fc144c23c7741a232cc48c8fd7e4c
+2025-09-23 15:56:47,439 INFO cctp_roundtrip:   claim tx: 0x05d227283a41dd0313c43db4dd7c8156d3e013367bccda2642d22a60ed6a77c9
+2025-09-23 15:56:47,440 INFO cctp_roundtrip: Bridging 10.000000 USDC from HyperEVM back to mainnet
+2025-09-23 15:56:47,598 INFO hl_api.evm.bridge: CCTP fee quote 19 -> 0: bps=0 maxFee=0
+2025-09-23 15:57:00,477 INFO cctp_roundtrip: HyperEVM -> Mainnet succeeded (amount 10.000000 USDC)
+2025-09-23 15:57:00,477 INFO cctp_roundtrip:   burn tx: 0xfd3eb0b2ee1f189603de4910de52f44c03d82202576463b770b5b013cd801795
+2025-09-23 15:57:00,477 INFO cctp_roundtrip:   claim tx: 0x26e8b84afc0a8015a6a8060ccff05d6c4a28b94d5d6cd14b9096c9589e47bf0f
+2025-09-23 15:57:00,477 INFO cctp_roundtrip: Disconnected
 ```
 
 ## Supported Operations
