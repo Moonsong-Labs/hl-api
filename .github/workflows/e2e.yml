@@ -5,6 +5,12 @@ on:
     branches:
       - main
   pull_request:
+env:
+  ACCOUNT_ADDRESS: ${{secrets.ACCOUNT_ADDRESS}}
+  PRIVATE_KEY: ${{secrets.PRIVATE_KEY}}
+  HYPERLIQUID_STRATEGY: ${{secrets.HYPERLIQUID_STRATEGY}}
+  BRIDGE_STRATEGY: ${{secrets.BRIDGE_STRATEGY}}
+  MN_EVM_RPC: ${{secrets.MN_EVM_RPC}}
 
 jobs:
   bridge-e2e:
