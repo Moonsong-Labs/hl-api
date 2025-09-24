@@ -1,5 +1,8 @@
 # HyperLiquid Unified API
 
+|[![CI](https://github.com/Moonsong-Labs/hl-api/actions/workflows/ci.yml/badge.svg)](https://github.com/Moonsong-Labs/hl-api/actions/workflows/ci.yml) |[![E2E](https://github.com/Moonsong-Labs/hl-api/actions/workflows/e2e.yml/badge.svg)](https://github.com/Moonsong-Labs/hl-api/actions/workflows/e2e.yml) |
+|---|---|
+
 A unified Python API for interacting with HyperLiquid through both the Core SDK and EVM CoreWriter precompile.
 
 ## Usage
