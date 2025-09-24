@@ -13,8 +13,8 @@ env:
   MN_EVM_RPC: ${{secrets.MN_EVM_RPC}}
 
 jobs:
-  bridge-e2e:
-    name: Bridge (uv)
+  evm-bridge-e2e:
+    name: Bridge via CCTP
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,8 +28,8 @@ jobs:
       - name: Run CCTP Bridge Script
         run: uv run examples/08_evm_cctp_roundtrip.py
   
-  market-e2e:
-    name: Bridge (uv)
+  evm-market-e2e:
+    name: Market Orders via EVM
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,4 +41,34 @@ jobs:
       - name: Sync project dependencies (frozen)
         run: uv sync --frozen
       - name: Run Market Orders Script
-        run: uv run examples/07_evm_market_orders.py  
+        run: uv run examples/07_evm_market_orders.py
+
+  core-limit-e2e:
+    name: Limit Orders via Core
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup uv and Python
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Sync project dependencies (frozen)
+        run: uv sync --frozen
+      - name: Run Market Orders Script
+        run: uv run examples/01_place_and_cancel_order.py
+  
+  core-market-e2e:
+    name: Market Orders via Core
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup uv and Python
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Sync project dependencies (frozen)
+        run: uv sync --frozen
+      - name: Run Market Orders Script
+        run:  uv run examples/03_market_order.py    
