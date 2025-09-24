@@ -70,7 +70,7 @@ def main() -> None:
             logging.error("Market buy failed: %s", buy_response.error)
             return
 
-        logging.info("Market buy complete; response: %s", buy_response.raw_response)
+        logging.debug("Market buy complete; response: %s", buy_response.raw_response)
 
         # sleep 5 seconds to ensure order is processed before closing
         logging.info("Waiting 5 seconds before submitting market sell...")
@@ -87,7 +87,7 @@ def main() -> None:
             logging.error("Market sell failed: %s", close_response.error)
             return
 
-        logging.info("Market sell complete; response: %s", close_response.raw_response)
+        logging.debug("Market sell complete; response: %s", close_response.raw_response)
 
     finally:
         client.disconnect()

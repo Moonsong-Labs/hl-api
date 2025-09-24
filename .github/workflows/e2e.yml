@@ -1,0 +1,38 @@
+name: E2E
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  bridge-e2e:
+    name: Bridge (uv)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup uv and Python
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Sync project dependencies (frozen)
+        run: uv sync --frozen
+      - name: Run CCTP Bridge Script
+        run: uv run examples/08_evm_cctp_roundtrip.py
+  
+  market-e2e:
+    name: Bridge (uv)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup uv and Python
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Sync project dependencies (frozen)
+        run: uv sync --frozen
+      - name: Run Market Orders Script
+        run: uv run examples/07_evm_market_orders.py  

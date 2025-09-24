@@ -52,7 +52,7 @@ def main() -> None:
     bridge_strategy_address = _require_env("BRIDGE_STRATEGY")
 
     hl_rpc_url = os.getenv("HYPER_EVM_RPC", "https://rpc.hyperliquid-testnet.xyz/evm")
-    mn_rpc_url = os.getenv("HL_EVM_RPC", "https://sepolia.drpc.org")
+    mn_rpc_url = os.getenv("MN_EVM_RPC", "https://sepolia.drpc.org")
     testnet = os.getenv("HL_API_TESTNET", "true").lower() != "false"
 
     amount = float(os.getenv("BRIDGE_AMOUNT_USDC", str(DEFAULT_AMOUNT)))
