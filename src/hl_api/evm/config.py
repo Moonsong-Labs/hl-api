@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from web3.types import ChecksumAddress
@@ -75,40 +75,13 @@ class EVMClientConfig:
         else:
             info_url = self.info_url.rstrip("/")
 
-        bridge = self.bridge
-        iris_url = bridge.iris_base_url
+        iris_url = self.bridge.iris_base_url
         if iris_url is None:
             iris_url = IRIS_API_SANDBOX if self.testnet else IRIS_API_PROD
-        bridge = BridgeConfig(
-            wait_for_receipt=bridge.wait_for_receipt,
-            receipt_timeout=bridge.receipt_timeout,
-            iris_base_url=iris_url.rstrip("/"),
-            iris_poll_interval=bridge.iris_poll_interval,
-            iris_max_polls=bridge.iris_max_polls,
-            hyperliquid_domain=bridge.hyperliquid_domain,
-            mainnet_domain=bridge.mainnet_domain,
-            cctp_finality_threshold=bridge.cctp_finality_threshold,
-        )
+        bridge = replace(self.bridge, iris_base_url=iris_url.rstrip("/"))
 
-        flexible_vault = self.flexible_vault
-        if flexible_vault is not None:
-            flexible_vault = FlexibleVaultConfig(
-                proof_url=flexible_vault.proof_url,
-                verifier_address=flexible_vault.verifier_address,
-                verifier_network=flexible_vault.verifier_network,
-                check_merkle_root=flexible_vault.check_merkle_root,
-                proof_blob=flexible_vault.proof_blob,
-            )
-
-        return EVMClientConfig(
-            private_key=self.private_key,
-            hl_rpc_url=self.hl_rpc_url,
-            mn_rpc_url=self.mn_rpc_url,
-            hl_strategy_address=self.hl_strategy_address,
-            bridge_strategy_address=self.bridge_strategy_address,
-            request_timeout=self.request_timeout,
-            testnet=self.testnet,
+        return replace(
+            self,
             info_url=info_url,
             bridge=bridge,
-            flexible_vault=flexible_vault,
         )
