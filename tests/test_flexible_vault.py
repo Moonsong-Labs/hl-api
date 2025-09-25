@@ -5,8 +5,9 @@ from typing import Any, cast
 
 import pytest
 from requests import Session
+from web3 import Web3
 
-from hl_api.evm.config import FlexibleVaultConfig
+from hl_api.evm.config import EVMClientConfig
 from hl_api.evm.connections import Web3Connections
 from hl_api.evm.proofs import FlexibleVaultProofResolver, ProofManager
 from hl_api.exceptions import ValidationError
@@ -83,7 +84,14 @@ def _example_payload() -> dict[str, Any]:
 
 
 def test_fetch_requires_https() -> None:
-    config = FlexibleVaultConfig(proof_url="http://example.com/proof.json")
+    config = EVMClientConfig(
+        private_key="0x" + "0" * 64,
+        hl_rpc_url="https://example.com",
+        mn_rpc_url="https://example.com",
+        hl_strategy_address=Web3.to_checksum_address("0x" + "0" * 40),
+        bridge_strategy_address=Web3.to_checksum_address("0x" + "0" * 40),
+        flexible_vault_proof_url="http://example.com/proof.json",
+    )
     session = DummySession(DummyResponse({}))
     manager = ProofManager(session, request_timeout=1.0)
 
@@ -104,10 +112,15 @@ def test_resolver_loads_payload(monkeypatch: pytest.MonkeyPatch) -> None:
         ),
     )
 
-    config = FlexibleVaultConfig(
-        proof_url="https://example.com/proof.json",
-        verifier_address="0x0000000000000000000000000000000000000001",
-        check_merkle_root=True,
+    config = EVMClientConfig(
+        private_key="0x" + "0" * 64,
+        hl_rpc_url="https://example.com",
+        mn_rpc_url="https://example.com",
+        hl_strategy_address=Web3.to_checksum_address("0x" + "0" * 40),
+        bridge_strategy_address=Web3.to_checksum_address("0x" + "0" * 40),
+        flexible_vault_proof_url="https://example.com/proof.json",
+        flexible_vault_verifier_address="0x0000000000000000000000000000000000000001",
+        flexible_vault_check_merkle_root=True,
     )
 
     resolver = FlexibleVaultProofResolver(
@@ -134,8 +147,13 @@ def test_resolver_missing_description_raises(monkeypatch: pytest.MonkeyPatch) ->
         ),
     )
 
-    config = FlexibleVaultConfig(
-        proof_url="https://example.com/proof.json",
+    config = EVMClientConfig(
+        private_key="0x" + "0" * 64,
+        hl_rpc_url="https://example.com",
+        mn_rpc_url="https://example.com",
+        hl_strategy_address=Web3.to_checksum_address("0x" + "0" * 40),
+        bridge_strategy_address=Web3.to_checksum_address("0x" + "0" * 40),
+        flexible_vault_proof_url="https://example.com/proof.json",
     )
 
     resolver = FlexibleVaultProofResolver(

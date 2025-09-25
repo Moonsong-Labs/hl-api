@@ -34,13 +34,11 @@ from ..utils import (
 from .bridge import CCTPBridge
 from .config import (
     DEFAULT_CCTP_FINALITY_THRESHOLD,
-    DEFAULT_FLEXIBLE_VAULT_PROOF_URL,
     DEFAULT_IRIS_MAX_POLLS,
     DEFAULT_IRIS_POLL_INTERVAL,
     DEFAULT_RECEIPT_TIMEOUT,
     DEFAULT_REQUEST_TIMEOUT,
     EVMClientConfig,
-    FlexibleVaultConfig,
 )
 from .connections import Web3Connections
 from .metadata import AssetMetadataCache
@@ -71,25 +69,11 @@ class HLProtocolEVM(HLProtocolBase):
         hyperliquid_domain: int | None = None,
         mainnet_domain: int | None = None,
         cctp_finality_threshold: int = DEFAULT_CCTP_FINALITY_THRESHOLD,
-        flexible_vault: FlexibleVaultConfig | None = None,
         flexible_vault_proof_blob: Mapping[str, Any] | None = None,
         disable_call_verification: bool = False,
     ) -> None:
         hl_address = Web3.to_checksum_address(hl_strategy_address)
         bridge_address = Web3.to_checksum_address(bridge_strategy_address)
-
-        if flexible_vault and not disable_call_verification:
-            vault_proof_url = flexible_vault.proof_url
-            vault_verifier = flexible_vault.verifier_address
-            vault_network = flexible_vault.verifier_network
-            vault_check_root = flexible_vault.check_merkle_root
-            vault_blob = flexible_vault_proof_blob or flexible_vault.proof_blob
-        else:
-            vault_proof_url = DEFAULT_FLEXIBLE_VAULT_PROOF_URL
-            vault_verifier = None
-            vault_network = "hyper"
-            vault_check_root = False
-            vault_blob = flexible_vault_proof_blob
 
         config = EVMClientConfig(
             private_key=private_key,
@@ -107,11 +91,7 @@ class HLProtocolEVM(HLProtocolBase):
             hyperliquid_domain=hyperliquid_domain,
             mainnet_domain=mainnet_domain,
             cctp_finality_threshold=cctp_finality_threshold,
-            flexible_vault_proof_url=vault_proof_url,
-            flexible_vault_verifier_address=vault_verifier,
-            flexible_vault_verifier_network=vault_network,
-            flexible_vault_check_merkle_root=vault_check_root,
-            flexible_vault_proof_blob=vault_blob,
+            flexible_vault_proof_blob=flexible_vault_proof_blob,
         )
 
         self._config = config
@@ -124,18 +104,10 @@ class HLProtocolEVM(HLProtocolBase):
             receipt_timeout=config.receipt_timeout,
         )
         self._call_verification_disabled = disable_call_verification
-        # Create a temporary FlexibleVaultConfig for the resolver if needed
         self._flexible_proof_resolver: FlexibleVaultProofResolver | None
         if not self._call_verification_disabled and config.flexible_vault_proof_blob:
-            vault_config = FlexibleVaultConfig(
-                proof_url=config.flexible_vault_proof_url,
-                verifier_address=config.flexible_vault_verifier_address,
-                verifier_network=config.flexible_vault_verifier_network,
-                check_merkle_root=config.flexible_vault_check_merkle_root,
-                proof_blob=config.flexible_vault_proof_blob,
-            )
             self._flexible_proof_resolver = FlexibleVaultProofResolver(
-                vault_config,
+                config,
                 self._connections,
                 self._session,
                 request_timeout=config.request_timeout,

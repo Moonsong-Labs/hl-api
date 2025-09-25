@@ -12,7 +12,7 @@ from web3 import Web3
 
 from ..exceptions import NetworkError, ValidationError
 from ..types import VerificationPayload
-from .config import FlexibleVaultConfig
+from .config import EVMClientConfig
 from .connections import Web3Connections
 
 logger = logging.getLogger(__name__)
@@ -48,8 +48,8 @@ class ProofManager:
         self._cache: dict[str, ProofDataset] = {}
         self._validated_roots: set[str] = set()
 
-    def fetch(self, config: FlexibleVaultConfig) -> ProofDataset:
-        blob = config.proof_blob
+    def fetch(self, config: EVMClientConfig) -> ProofDataset:
+        blob = config.flexible_vault_proof_blob
         if blob is not None:
             if not isinstance(blob, Mapping):
                 raise ValidationError(
@@ -58,7 +58,7 @@ class ProofManager:
                     value=blob,
                 )
 
-            source_label = config.proof_url or "<inline>"
+            source_label = config.flexible_vault_proof_url or "<inline>"
             if source_label == "<inline>":
                 logger.debug("Loading flexible vault proof set from inline blob")
             else:
@@ -67,11 +67,11 @@ class ProofManager:
                     source_label,
                 )
             dataset = _build_dataset(blob, source_label=source_label)
-            if config.proof_url:
-                self._cache.setdefault(config.proof_url, dataset)
+            if config.flexible_vault_proof_url:
+                self._cache.setdefault(config.flexible_vault_proof_url, dataset)
             return dataset
 
-        url = config.proof_url
+        url = config.flexible_vault_proof_url
         if not url:
             raise ValidationError(
                 "Flexible vault proof URL is required when no blob is provided",
@@ -119,17 +119,17 @@ class ProofManager:
         return dataset
 
     def ensure_merkle_root(
-        self, config: FlexibleVaultConfig, dataset: ProofDataset, connections: Web3Connections
+        self, config: EVMClientConfig, dataset: ProofDataset, connections: Web3Connections
     ) -> None:
-        verifier = config.verifier_address
-        if not verifier or not config.check_merkle_root:
+        verifier = config.flexible_vault_verifier_address
+        if not verifier or not config.flexible_vault_check_merkle_root:
             return
 
         cache_key = f"{dataset.url}|{verifier.lower()}"
         if cache_key in self._validated_roots:
             return
 
-        web3 = _select_web3(connections, config.verifier_network)
+        web3 = _select_web3(connections, config.flexible_vault_verifier_network)
         address = Web3.to_checksum_address(verifier)
         try:
             contract = web3.eth.contract(address=address, abi=_VERIFIER_ABI)
@@ -189,7 +189,7 @@ class FlexibleVaultProofResolver:
 
     def __init__(
         self,
-        config: FlexibleVaultConfig,
+        config: EVMClientConfig,
         connections: Web3Connections,
         session: requests.Session,
         *,
