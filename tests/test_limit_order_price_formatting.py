@@ -8,8 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from hl_api.evm import HLProtocolEVM
-from hl_api.types import VerificationPayload
-from hl_api.utils import format_price_for_api, price_to_uint64
+from hl_api.utils import format_price_for_api, to_uint64
 
 
 @pytest.fixture()
@@ -52,7 +51,7 @@ def test_limit_order_formats_perp_price(api: HLProtocolEVM) -> None:
     assert response.success is True
 
     expected_price = format_price_for_api(input_price, 4, is_perp=True)
-    assert _captured_price_uint(api) == price_to_uint64(expected_price)
+    assert _captured_price_uint(api) == to_uint64(expected_price, 8)
     api._resolve_perp_sz_decimals.assert_called_once_with(4)
     api._resolve_spot_base_sz_decimals.assert_not_called()
 
@@ -68,7 +67,7 @@ def test_limit_order_formats_spot_price_when_perp_metadata_missing(api: HLProtoc
     assert response.success is True
 
     expected_price = format_price_for_api(input_price, 2, is_perp=False)
-    assert _captured_price_uint(api) == price_to_uint64(expected_price)
+    assert _captured_price_uint(api) == to_uint64(expected_price, 8)
     api._resolve_perp_sz_decimals.assert_called_once_with(7)
     api._resolve_spot_base_sz_decimals.assert_called_once_with(7)
 
@@ -83,6 +82,6 @@ def test_limit_order_falls_back_when_metadata_unavailable(api: HLProtocolEVM) ->
 
     assert response.success is True
 
-    assert _captured_price_uint(api) == price_to_uint64(input_price)
+    assert _captured_price_uint(api) == to_uint64(input_price, 8)
     api._resolve_perp_sz_decimals.assert_called_once_with(9)
     api._resolve_spot_base_sz_decimals.assert_called_once_with(9)

@@ -13,7 +13,7 @@ import requests
 from ..evm_utils import serialise_receipt
 from ..exceptions import NetworkError, ValidationError
 from ..types import BridgeResponse, VerificationPayload
-from .config import BridgeConfig, EVMClientConfig
+from .config import EVMClientConfig
 from .connections import Web3Connections
 from .proofs import FlexibleVaultProofResolver
 
@@ -39,22 +39,19 @@ class CCTPBridge:
         verification_resolver: FlexibleVaultProofResolver | None = None,
         disable_call_verification: bool = False,
     ) -> None:
-        bridge_cfg: BridgeConfig = config.bridge
         self._config = config
         self._connections = connections
         self._session = session
-        self._wait_for_receipt = bridge_cfg.wait_for_receipt
-        self._receipt_timeout = bridge_cfg.receipt_timeout
-        self._iris_base_url = bridge_cfg.iris_base_url or ""
-        self._iris_poll_interval = bridge_cfg.iris_poll_interval
-        self._iris_max_polls = bridge_cfg.iris_max_polls
+        self._wait_for_receipt = config.wait_for_receipt
+        self._receipt_timeout = config.receipt_timeout
+        self._iris_base_url = config.iris_base_url or ""
+        self._iris_poll_interval = config.iris_poll_interval
+        self._iris_max_polls = config.iris_max_polls
         self._hyper_domain = (
-            bridge_cfg.hyperliquid_domain if bridge_cfg.hyperliquid_domain is not None else 19
+            config.hyperliquid_domain if config.hyperliquid_domain is not None else 19
         )
-        self._mainnet_domain = (
-            bridge_cfg.mainnet_domain if bridge_cfg.mainnet_domain is not None else 0
-        )
-        self._cctp_finality_threshold = bridge_cfg.cctp_finality_threshold
+        self._mainnet_domain = config.mainnet_domain if config.mainnet_domain is not None else 0
+        self._cctp_finality_threshold = config.cctp_finality_threshold
         self._verification_resolver = verification_resolver
         self._call_verification_disabled = disable_call_verification
 

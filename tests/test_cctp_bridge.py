@@ -8,7 +8,7 @@ from requests import Session
 from web3.types import ChecksumAddress
 
 from hl_api.evm.bridge import CCTPBridge
-from hl_api.evm.config import BridgeConfig, EVMClientConfig
+from hl_api.evm.config import EVMClientConfig
 from hl_api.evm.connections import Web3Connections
 from hl_api.exceptions import ValidationError
 from hl_api.types import VerificationPayload
@@ -51,7 +51,7 @@ def _bridge_config() -> EVMClientConfig:
         hl_strategy_address=cast(ChecksumAddress, "0x0000000000000000000000000000000000000001"),
         bridge_strategy_address=cast(ChecksumAddress, "0x0000000000000000000000000000000000000002"),
         request_timeout=1.0,
-        bridge=BridgeConfig(iris_base_url="https://iris"),
+        iris_base_url="https://iris",
     )
 
 

@@ -36,12 +36,9 @@ from .utils import (
     cloid_to_uint128,
     decode_tif,
     encode_tif,
+    from_uint64,
     generate_cloid,
-    price_to_uint64,
-    size_to_uint64,
-    uint64_to_price,
-    uint64_to_size,
-    validate_address,
+    to_uint64,
 )
 
 __version__ = "0.1.0"
@@ -75,13 +72,10 @@ __all__ = [
     "ValidationError",
     "MethodNotImplementedError",
     # Utility functions
-    "price_to_uint64",
-    "uint64_to_price",
-    "size_to_uint64",
-    "uint64_to_size",
+    "to_uint64",
+    "from_uint64",
     "encode_tif",
     "decode_tif",
     "generate_cloid",
-    "validate_address",
     "cloid_to_uint128",
 ]

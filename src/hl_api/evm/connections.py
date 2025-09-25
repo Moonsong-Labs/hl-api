@@ -18,7 +18,6 @@ from web3.types import ChecksumAddress
 from ..abi import HyperliquidBridgeStrategy_abi, HyperliquidStrategy_abi
 from ..constants import Precompile
 from ..exceptions import NetworkError, ValidationError
-from ..utils import validate_address
 from .config import EVMClientConfig
 
 logger = logging.getLogger(__name__)
@@ -258,7 +257,7 @@ class Web3Connections:
                 details={"error": str(exc)},
             ) from exc
 
-        subvault = cast(ChecksumAddress, validate_address(normalized))
+        subvault = Web3.to_checksum_address(normalized)
         if int(subvault, 16) == 0:
             raise ValidationError(
                 "Strategy contract does not define a subvault address",

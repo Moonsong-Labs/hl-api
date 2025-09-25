@@ -19,7 +19,7 @@ from ..types import (
     SendResponse,
     TransferResponse,
 )
-from ..utils import size_to_uint64
+from ..utils import to_uint64
 from .config import CoreClientConfig
 from .connections import CoreConnections
 
@@ -275,7 +275,7 @@ class HLProtocolCore(HLProtocolBase):
             result = self._connections.exchange.vault_usd_transfer(
                 vault_address=vault,
                 is_deposit=is_deposit,
-                usd=size_to_uint64(usd, 6),
+                usd=to_uint64(usd, 6),
             )
             return TransferResponse(success=True, amount=usd, raw_response=result)
         except Exception as exc:

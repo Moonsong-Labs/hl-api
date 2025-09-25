@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
-from typing import Any, cast
+from typing import Any
 
 import requests
 from eth_account.signers.local import LocalAccount
@@ -29,18 +29,16 @@ from ..utils import (
     cloid_to_uint128,
     encode_tif,
     format_price_for_api,
-    price_to_uint64,
-    size_to_uint64,
-    validate_address,
+    to_uint64,
 )
 from .bridge import CCTPBridge
 from .config import (
     DEFAULT_CCTP_FINALITY_THRESHOLD,
+    DEFAULT_FLEXIBLE_VAULT_PROOF_URL,
     DEFAULT_IRIS_MAX_POLLS,
     DEFAULT_IRIS_POLL_INTERVAL,
     DEFAULT_RECEIPT_TIMEOUT,
     DEFAULT_REQUEST_TIMEOUT,
-    BridgeConfig,
     EVMClientConfig,
     FlexibleVaultConfig,
 )
@@ -77,36 +75,21 @@ class HLProtocolEVM(HLProtocolBase):
         flexible_vault_proof_blob: Mapping[str, Any] | None = None,
         disable_call_verification: bool = False,
     ) -> None:
-        hl_address = cast(ChecksumAddress, validate_address(hl_strategy_address))
-        bridge_address = cast(ChecksumAddress, validate_address(bridge_strategy_address))
+        hl_address = Web3.to_checksum_address(hl_strategy_address)
+        bridge_address = Web3.to_checksum_address(bridge_strategy_address)
 
-        bridge_cfg = BridgeConfig(
-            wait_for_receipt=wait_for_receipt,
-            receipt_timeout=receipt_timeout,
-            iris_base_url=iris_base_url,
-            iris_poll_interval=iris_poll_interval,
-            iris_max_polls=iris_max_polls,
-            hyperliquid_domain=hyperliquid_domain,
-            mainnet_domain=mainnet_domain,
-            cctp_finality_threshold=cctp_finality_threshold,
-        )
-
-        if disable_call_verification:
-            flexible_vault_config: FlexibleVaultConfig | None = None
+        if flexible_vault and not disable_call_verification:
+            vault_proof_url = flexible_vault.proof_url
+            vault_verifier = flexible_vault.verifier_address
+            vault_network = flexible_vault.verifier_network
+            vault_check_root = flexible_vault.check_merkle_root
+            vault_blob = flexible_vault_proof_blob or flexible_vault.proof_blob
         else:
-            base_config = flexible_vault or FlexibleVaultConfig()
-            blob_override = (
-                flexible_vault_proof_blob
-                if flexible_vault_proof_blob is not None
-                else base_config.proof_blob
-            )
-            flexible_vault_config = FlexibleVaultConfig(
-                proof_url=base_config.proof_url,
-                verifier_address=base_config.verifier_address,
-                verifier_network=base_config.verifier_network,
-                check_merkle_root=base_config.check_merkle_root,
-                proof_blob=blob_override,
-            )
+            vault_proof_url = DEFAULT_FLEXIBLE_VAULT_PROOF_URL
+            vault_verifier = None
+            vault_network = "hyper"
+            vault_check_root = False
+            vault_blob = flexible_vault_proof_blob
 
         config = EVMClientConfig(
             private_key=private_key,
@@ -116,9 +99,20 @@ class HLProtocolEVM(HLProtocolBase):
             bridge_strategy_address=bridge_address,
             request_timeout=request_timeout,
             testnet=testnet,
-            bridge=bridge_cfg,
-            flexible_vault=flexible_vault_config,
-        ).with_defaulted_urls()
+            wait_for_receipt=wait_for_receipt,
+            receipt_timeout=receipt_timeout,
+            iris_base_url=iris_base_url,
+            iris_poll_interval=iris_poll_interval,
+            iris_max_polls=iris_max_polls,
+            hyperliquid_domain=hyperliquid_domain,
+            mainnet_domain=mainnet_domain,
+            cctp_finality_threshold=cctp_finality_threshold,
+            flexible_vault_proof_url=vault_proof_url,
+            flexible_vault_verifier_address=vault_verifier,
+            flexible_vault_verifier_network=vault_network,
+            flexible_vault_check_merkle_root=vault_check_root,
+            flexible_vault_proof_blob=vault_blob,
+        )
 
         self._config = config
         self._session = requests.Session()
@@ -126,20 +120,28 @@ class HLProtocolEVM(HLProtocolBase):
         self._metadata = AssetMetadataCache(config, self._connections, self._session)
         self._dispatcher = TransactionDispatcher(
             self._connections,
-            wait_for_receipt=config.bridge.wait_for_receipt,
-            receipt_timeout=config.bridge.receipt_timeout,
+            wait_for_receipt=config.wait_for_receipt,
+            receipt_timeout=config.receipt_timeout,
         )
         self._call_verification_disabled = disable_call_verification
-        self._flexible_proof_resolver = (
-            FlexibleVaultProofResolver(
-                config.flexible_vault,
+        # Create a temporary FlexibleVaultConfig for the resolver if needed
+        self._flexible_proof_resolver: FlexibleVaultProofResolver | None
+        if not self._call_verification_disabled and config.flexible_vault_proof_blob:
+            vault_config = FlexibleVaultConfig(
+                proof_url=config.flexible_vault_proof_url,
+                verifier_address=config.flexible_vault_verifier_address,
+                verifier_network=config.flexible_vault_verifier_network,
+                check_merkle_root=config.flexible_vault_check_merkle_root,
+                proof_blob=config.flexible_vault_proof_blob,
+            )
+            self._flexible_proof_resolver = FlexibleVaultProofResolver(
+                vault_config,
                 self._connections,
                 self._session,
                 request_timeout=config.request_timeout,
             )
-            if (config.flexible_vault and not self._call_verification_disabled)
-            else None
-        )
+        else:
+            self._flexible_proof_resolver = None
         self._bridge_helper = CCTPBridge(
             config,
             self._connections,
@@ -204,11 +206,8 @@ class HLProtocolEVM(HLProtocolBase):
     # ------------------------------------------------------------------
     def get_market_price(self, asset: str) -> float:
         self._ensure_connected()
-        try:
-            mid_price, _, _ = self._market_price_context(asset)
-            return float(mid_price)
-        except ValidationError as exc:
-            raise ValueError(str(exc)) from exc
+        mid_price, _, _ = self._market_price_context(asset)
+        return float(mid_price)
 
     def market_order(
         self,
@@ -336,8 +335,8 @@ class HLProtocolEVM(HLProtocolBase):
     ) -> OrderResponse:
         asset_id = self._resolve_asset_id(asset)
         formatted_price = self._format_limit_price(asset_id, limit_px)
-        price_uint = price_to_uint64(formatted_price)
-        size_uint = size_to_uint64(sz)
+        price_uint = to_uint64(formatted_price, 8)
+        size_uint = to_uint64(sz, 8)
         tif_uint = encode_tif(tif)
         cloid_uint = cloid_to_uint128(cloid)
 
@@ -399,7 +398,7 @@ class HLProtocolEVM(HLProtocolBase):
     def spot_send(
         self, recipient: str, token: str, amount: float, destination: str
     ) -> SendResponse:
-        amount_uint = size_to_uint64(amount)
+        amount_uint = to_uint64(amount, 8)
         context = {"token": token, "amount": amount_uint, "recipient": recipient}
         payload = self._resolve_verification_payload(
             "CoreWriter.sendRawAction{action: spot_send}(anyBytes)", context
@@ -449,7 +448,7 @@ class HLProtocolEVM(HLProtocolBase):
 
     @transaction_method("usd_class_transfer_to_perp", TransferResponse)
     def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
-        amount_uint = size_to_uint64(amount, 6)
+        amount_uint = to_uint64(amount, 6)
         context = {"amount": amount_uint}
         payload = self._resolve_verification_payload(
             "CoreWriter.sendRawAction{action: usd_transfer}(anyBytes)", context
@@ -460,7 +459,7 @@ class HLProtocolEVM(HLProtocolBase):
 
     @transaction_method("usd_class_transfer_to_spot", TransferResponse)
     def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
-        amount_uint = size_to_uint64(amount, 6)
+        amount_uint = to_uint64(amount, 6)
         context = {"amount": amount_uint}
         payload = self._resolve_verification_payload(
             "CoreWriter.sendRawAction{action: usd_transfer}(anyBytes)", context
