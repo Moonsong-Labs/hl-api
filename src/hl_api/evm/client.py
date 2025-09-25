@@ -129,7 +129,7 @@ class HLProtocolEVM(HLProtocolBase):
             wait_for_receipt=config.bridge.wait_for_receipt,
             receipt_timeout=config.bridge.receipt_timeout,
         )
-        self._bridge_helper = CCTPBridge(config, self._connections, self._session)
+        self._call_verification_disabled = disable_call_verification
         self._flexible_proof_resolver = (
             FlexibleVaultProofResolver(
                 config.flexible_vault,
@@ -137,10 +137,16 @@ class HLProtocolEVM(HLProtocolBase):
                 self._session,
                 request_timeout=config.request_timeout,
             )
-            if config.flexible_vault
+            if (config.flexible_vault and not self._call_verification_disabled)
             else None
         )
-        self._call_verification_disabled = disable_call_verification
+        self._bridge_helper = CCTPBridge(
+            config,
+            self._connections,
+            self._session,
+            verification_resolver=self._flexible_proof_resolver,
+            disable_call_verification=self._call_verification_disabled,
+        )
 
         self._asset_by_symbol = self._metadata.asset_by_symbol
         self._token_index_by_symbol = self._metadata.token_index_by_symbol

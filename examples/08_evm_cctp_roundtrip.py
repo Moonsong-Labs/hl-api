@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
+import json
 
 from dotenv import load_dotenv
 
@@ -57,6 +59,10 @@ def main() -> None:
 
     amount = float(os.getenv("BRIDGE_AMOUNT_USDC", str(DEFAULT_AMOUNT)))
 
+    proof_blob_path = Path(__file__).with_name("example_verification_blob.json")
+    with proof_blob_path.open("r", encoding="utf-8") as proof_file:
+        verification_blob = json.load(proof_file)
+
     client = HLProtocolEVM(
         private_key=private_key,
         hl_rpc_url=hl_rpc_url,
@@ -64,6 +70,7 @@ def main() -> None:
         hl_strategy_address=hl_strategy_address,
         bridge_strategy_address=bridge_strategy_address,
         testnet=testnet,
+        flexible_vault_proof_blob=verification_blob,
     )
 
     client.connect()

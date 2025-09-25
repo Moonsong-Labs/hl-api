@@ -15,10 +15,16 @@ from ..exceptions import NetworkError, ValidationError
 from ..types import BridgeResponse, VerificationPayload
 from .config import BridgeConfig, EVMClientConfig
 from .connections import Web3Connections
+from .proofs import FlexibleVaultProofResolver
 
 logger = logging.getLogger(__name__)
 
 USDC_SCALING = Decimal("1000000")
+
+_CCTP_VERIFICATION_DESCRIPTIONS = (
+    "USDC.approve(TokenMessenger, anyInt)",
+    "TokenMessenger.depositForBurn(anyInt)",
+)
 
 
 class CCTPBridge:
@@ -29,6 +35,9 @@ class CCTPBridge:
         config: EVMClientConfig,
         connections: Web3Connections,
         session: requests.Session,
+        *,
+        verification_resolver: FlexibleVaultProofResolver | None = None,
+        disable_call_verification: bool = False,
     ) -> None:
         bridge_cfg: BridgeConfig = config.bridge
         self._config = config
@@ -46,6 +55,8 @@ class CCTPBridge:
             bridge_cfg.mainnet_domain if bridge_cfg.mainnet_domain is not None else 0
         )
         self._cctp_finality_threshold = bridge_cfg.cctp_finality_threshold
+        self._verification_resolver = verification_resolver
+        self._call_verification_disabled = disable_call_verification
 
     # ------------------------------------------------------------------
     # Public entry points
@@ -226,14 +237,15 @@ class CCTPBridge:
                 raw=raw_context,
             )
 
-        payload = [VerificationPayload.default().as_tuple()] * 2
+        payloads = self._resolve_cctp_verification_payloads(direction, amount_units)
+
         self._stage(direction, "submit burn transaction")
         try:
             burn_tx = source_contract.functions.bridgeUSDCViaCCTPv2(
                 amount_units,
                 max_fee,
                 finality_threshold,
-                payload,
+                payloads,
             ).transact()
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception("Failed to submit CCTP burn on %s", direction)
@@ -352,21 +364,48 @@ class CCTPBridge:
 
         return int(scaled_integral), scaled_integral / USDC_SCALING, truncated
 
+    def _resolve_cctp_verification_payloads(
+        self, direction: str, amount_units: int
+    ) -> list[tuple[int, bytes, list[bytes]]]:
+        if self._call_verification_disabled:
+            logger.debug(
+                "Call verification disabled; using default CCTP verification payloads for '%s'",
+                direction,
+            )
+            return [
+                VerificationPayload.default().as_tuple() for _ in _CCTP_VERIFICATION_DESCRIPTIONS
+            ]
+
+        resolver = self._verification_resolver
+        if resolver is None:
+            logger.warning(
+                "No verification resolver configured; using default CCTP payloads for '%s'",
+                direction,
+            )
+            return [
+                VerificationPayload.default().as_tuple() for _ in _CCTP_VERIFICATION_DESCRIPTIONS
+            ]
+
+        context = {"direction": direction, "amount_units": amount_units}
+        return [
+            resolver.resolve(desc, context).as_tuple() for desc in _CCTP_VERIFICATION_DESCRIPTIONS
+        ]
+
     def _fetch_cctp_fee(self, amount_units: int, src_domain: int, dest_domain: int) -> int:
         url = f"{self._iris_base_url}/v2/burn/USDC/fees/{src_domain}/{dest_domain}"
         logger.debug("Fetching CCTP fee quote from IRIS: %s", url)
         response = self._session.get(url, timeout=self._config.request_timeout)
         response.raise_for_status()
-        payload = response.json()
+        json_resp = response.json()
 
-        if not isinstance(payload, list):
+        if not isinstance(json_resp, list):
             raise ValidationError(
                 "Unexpected fee response format",
                 field="iris_response",
-                value=payload,
+                value=json_resp,
             )
 
-        entries = [entry for entry in payload if isinstance(entry, Mapping)]
+        entries = [entry for entry in json_resp if isinstance(entry, Mapping)]
         if not entries:
             logger.warning(
                 "Fee response missing usable entries for domains %s -> %s", src_domain, dest_domain
@@ -429,8 +468,8 @@ class CCTPBridge:
                 continue
 
             response.raise_for_status()
-            payload = response.json()
-            messages = self._extract_iris_messages(payload)
+            json_resp = response.json()
+            messages = self._extract_iris_messages(json_resp)
             if messages:
                 for record in messages:
                     status = str(record.get("status", "")).lower()
@@ -455,12 +494,12 @@ class CCTPBridge:
             f"Timed out waiting for IRIS attestation after {self._iris_max_polls * self._iris_poll_interval:.0f} seconds"
         )
 
-    def _extract_iris_messages(self, payload: Any) -> list[Mapping[str, Any]]:
-        if isinstance(payload, Mapping):
-            direct = payload.get("messages")
+    def _extract_iris_messages(self, json_blob: Any) -> list[Mapping[str, Any]]:
+        if isinstance(json_blob, Mapping):
+            direct = json_blob.get("messages")
             if isinstance(direct, list):
                 return [entry for entry in direct if isinstance(entry, Mapping)]
-            data = payload.get("data")
+            data = json_blob.get("data")
             if isinstance(data, Mapping):
                 nested = data.get("messages")
                 if isinstance(nested, list):

@@ -221,7 +221,7 @@ class FlexibleVaultProofResolver:
             available_payloads = sorted(self._dataset.payloads.keys())
             logger.warning("Proofs available: %s", available_payloads)
             raise ValidationError(
-                "No proofs available for configured description",
+                f"No proofs available for configured description {description} in {available_payloads}",
                 field="description",
                 value=description,
                 details={"available": sorted(self._dataset.payloads.keys())},
