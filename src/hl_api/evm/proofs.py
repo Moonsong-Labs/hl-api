@@ -1,0 +1,351 @@
+"""Flexible vault proof utilities."""
+
+from __future__ import annotations
+
+import ipaddress
+import logging
+import socket
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any
+from urllib.parse import urlparse
+
+import requests
+from web3 import Web3
+
+from ..exceptions import NetworkError, ValidationError
+from ..types import VerificationPayload
+from .config import FlexibleVaultConfig
+from .connections import Web3Connections
+
+logger = logging.getLogger(__name__)
+
+
+_VERIFIER_ABI = (
+    {
+        "inputs": [],
+        "name": "merkleRoot",
+        "outputs": [{"internalType": "bytes32", "name": "", "type": "bytes32"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+)
+
+
+@dataclass(frozen=True)
+class ProofDataset:
+    """In-memory representation of a fetched proof blob."""
+
+    url: str
+    title: str
+    merkle_root: str
+    payloads: dict[str, Mapping[str, Any]]
+
+
+class ProofManager:
+    """Fetch proof artifacts and enforce safety checks before usage."""
+
+    def __init__(self, session: requests.Session, *, request_timeout: float) -> None:
+        self._session = session
+        self._request_timeout = request_timeout
+        self._cache: dict[str, ProofDataset] = {}
+        self._validated_roots: set[str] = set()
+
+    def fetch(self, config: FlexibleVaultConfig) -> ProofDataset:
+        url = config.proof_url
+        if not url:
+            raise ValidationError(
+                "Flexible vault proof URL is required", field="proof_url", value=url
+            )
+
+        cached = self._cache.get(url)
+        if cached is not None:
+            return cached
+
+        self._validate_source_url(url, config.allowed_hosts)
+
+        logger.debug("Fetching flexible vault proof set from %s", url)
+        try:
+            response = self._session.get(url, timeout=self._request_timeout, allow_redirects=False)
+            response.raise_for_status()
+            if 300 <= response.status_code < 400:
+                raise ValidationError(
+                    "Proof source responded with a redirect",
+                    field="url",
+                    value=url,
+                    details={
+                        "status": response.status_code,
+                        "location": response.headers.get("Location"),
+                    },
+                )
+        except requests.RequestException as exc:  # pragma: no cover - network failure
+            raise NetworkError(
+                f"Failed to fetch verification proof set from {url}",
+                endpoint=url,
+                status_code=getattr(exc.response, "status_code", None),
+                details={"error": str(exc)},
+            ) from exc
+
+        payload = response.json()
+        if not isinstance(payload, Mapping):
+            raise ValidationError(
+                "Proof payload is not a JSON object",
+                field="payload",
+                value=payload,
+                details={"url": url},
+            )
+
+        title = _expect_str(payload.get("title"), "title")
+        merkle_root = _expect_hex(payload.get("merkle_root"), "merkle_root", expected_bytes=32)
+        proofs_raw = payload.get("merkle_proofs")
+        if not isinstance(proofs_raw, list):
+            raise ValidationError(
+                "Proof payload missing merkle_proofs list",
+                field="merkle_proofs",
+                value=proofs_raw,
+            )
+
+        payloads: dict[str, Mapping[str, Any]] = {}
+        for entry in proofs_raw:
+            if not isinstance(entry, Mapping):
+                raise ValidationError(
+                    "Proof entry must be an object",
+                    field="merkle_proofs",
+                    value=entry,
+                )
+            description = _expect_str(entry.get("description"), "description")
+            payloads[description] = dict(entry)
+
+        dataset = ProofDataset(url=url, title=title, merkle_root=merkle_root, payloads=payloads)
+        self._cache[url] = dataset
+        return dataset
+
+    def ensure_merkle_root(
+        self, config: FlexibleVaultConfig, dataset: ProofDataset, connections: Web3Connections
+    ) -> None:
+        verifier = config.verifier_address
+        if not verifier or not config.check_merkle_root:
+            return
+
+        cache_key = f"{dataset.url}|{verifier.lower()}"
+        if cache_key in self._validated_roots:
+            return
+
+        web3 = _select_web3(connections, config.verifier_network)
+        address = Web3.to_checksum_address(verifier)
+        try:
+            contract = web3.eth.contract(address=address, abi=_VERIFIER_ABI)
+            onchain_root = contract.functions.merkleRoot().call()
+        except Exception as exc:  # pragma: no cover - defensive
+            raise NetworkError(
+                "Failed to read merkle root from verifier contract",
+                endpoint=address,
+                details={"error": str(exc)},
+            ) from exc
+
+        onchain_hex = Web3.to_hex(onchain_root).lower()
+        expected_hex = dataset.merkle_root.lower()
+        if onchain_hex != expected_hex:
+            raise ValidationError(
+                "Merkle root mismatch between on-chain verifier and proof set",
+                field="merkle_root",
+                value=onchain_hex,
+                details={
+                    "expected": expected_hex,
+                    "verifier": address,
+                    "url": dataset.url,
+                },
+            )
+
+        self._validated_roots.add(cache_key)
+
+    def _validate_source_url(self, url: str, allowed_hosts: tuple[str, ...]) -> None:
+        try:
+            parsed = urlparse(url)
+        except ValueError as exc:
+            raise ValidationError("Invalid proof source URL", field="url", value=url) from exc
+
+        scheme = (parsed.scheme or "").lower()
+        if scheme != "https":
+            raise ValidationError(
+                "Proof source URL must use https",
+                field="url",
+                value=url,
+                details={"scheme": parsed.scheme},
+            )
+
+        hostname = (parsed.hostname or "").strip()
+        if not hostname:
+            raise ValidationError(
+                "Proof source URL must include a hostname", field="url", value=url
+            )
+
+        lowered = hostname.lower()
+        if lowered in {"localhost", "127.0.0.1", "::1"}:
+            raise ValidationError(
+                "Localhost URLs are not permitted for proof sources", field="url", value=url
+            )
+
+        if parsed.username or parsed.password:
+            raise ValidationError(
+                "Authentication information is not permitted in proof source URLs",
+                field="url",
+                value=url,
+            )
+
+        allowed_lower = tuple(h.lower() for h in allowed_hosts if h)
+        if allowed_lower and not _host_in_allowed(lowered, allowed_lower):
+            raise ValidationError(
+                "Proof source hostname is not in the allowed list",
+                field="url",
+                value=url,
+                details={"allowed_hosts": allowed_lower},
+            )
+
+        try:
+            resolved = socket.getaddrinfo(hostname, None)
+        except socket.gaierror as exc:
+            raise ValidationError(
+                "Unable to resolve proof source hostname",
+                field="url",
+                value=url,
+                details={"error": str(exc)},
+            ) from exc
+
+        for addr_info in resolved:
+            try:
+                ip_str = addr_info[4][0]
+                ip_obj = ipaddress.ip_address(ip_str)
+            except (IndexError, ValueError):
+                continue
+
+            if not ip_obj.is_global and lowered not in allowed_lower:
+                raise ValidationError(
+                    "Proof source IP address must be globally routable",
+                    field="url",
+                    value=url,
+                    details={"ip": ip_str},
+                )
+
+
+_HARDCODED_ACTION_DESCRIPTIONS: dict[str, str] = {
+    "WETH.approve": "WETH.approve(TokenMessenger, any)",
+    "USDC.approve": "USDC.approve(TokenMessenger, any)",
+}
+
+
+class FlexibleVaultProofResolver:
+    """Coordinate flexible vault proof retrieval and payload construction."""
+
+    def __init__(
+        self,
+        config: FlexibleVaultConfig,
+        connections: Web3Connections,
+        session: requests.Session,
+        *,
+        request_timeout: float,
+        proof_manager: ProofManager | None = None,
+    ) -> None:
+        self._config = config
+        self._connections = connections
+        self._manager = proof_manager or ProofManager(session, request_timeout=request_timeout)
+        self._dataset = self._manager.fetch(config)
+        self._manager.ensure_merkle_root(config, self._dataset, connections)
+
+    def resolve(
+        self, action: str, _context: Mapping[str, Any] | None = None
+    ) -> VerificationPayload:
+        if not self._config:
+            raise ValidationError(
+                "Flexible vault proofs are not configured", field="flexible_vault"
+            )
+
+        description = self._resolve_description(action)
+        payload = self._dataset.payloads.get(description)
+        if payload is None:
+            raise ValidationError(
+                "No proofs available for configured description",
+                field="description",
+                value=description,
+                details={"available": sorted(self._dataset.payloads.keys())},
+            )
+
+        result = VerificationPayload.from_dict(dict(payload))
+        logger.info(
+            "Flexible vault proof for action '%s' uses '%s' (url=%s, proof=%s)",
+            action,
+            description,
+            self._dataset.url,
+            _preview_proof(result),
+        )
+        return result
+
+    def _resolve_description(self, action: str) -> str:
+        mapped = self._config.action_descriptions.get(action)
+        if mapped:
+            return mapped
+
+        builtin = _HARDCODED_ACTION_DESCRIPTIONS.get(action)
+        if builtin:
+            return builtin
+
+        if self._config.default_description:
+            return self._config.default_description
+
+        raise ValidationError(
+            "No proof description configured for action",
+            field="action",
+            value=action,
+            details={"available": sorted(self._dataset.payloads.keys())},
+        )
+
+
+def _expect_str(value: Any, field: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValidationError(f"Proof payload missing {field}", field=field, value=value)
+    return value
+
+
+def _expect_hex(value: Any, field: str, *, expected_bytes: int | None = None) -> str:
+    raw = _expect_str(value, field)
+    if not raw.startswith("0x"):
+        raise ValidationError("Expected hex-encoded string", field=field, value=value)
+    lowered = raw.lower()
+    if expected_bytes is not None and len(lowered) != 2 + expected_bytes * 2:
+        raise ValidationError(
+            "Unexpected byte length for hex value",
+            field=field,
+            value=value,
+            details={"expected_length": expected_bytes},
+        )
+    return lowered
+
+
+def _preview_proof(payload: VerificationPayload) -> str:
+    if payload.proof:
+        first = payload.proof[0]
+        if isinstance(first, bytes):
+            return Web3.to_hex(first)
+        return str(first)
+    return "<empty>"
+
+
+def _select_web3(connections: Web3Connections, network_label: str | None) -> Web3:
+    label = (network_label or "hyper").strip().lower()
+    if label in {"hyper", "hyperliquid", "hl"}:
+        return connections.hyperliquid_web3
+    if label in {"mainnet", "ethereum", "eth"}:
+        return connections.mainnet_web3
+    raise ValidationError("Unknown proof source network", field="network", value=network_label)
+
+
+def _host_in_allowed(hostname: str, allowed_hosts: tuple[str, ...]) -> bool:
+    for allowed in allowed_hosts:
+        if hostname == allowed:
+            return True
+        if "." in hostname and hostname.endswith(f".{allowed}"):
+            return True
+    return False
+
+
+__all__ = ["FlexibleVaultProofResolver", "ProofDataset", "ProofManager"]

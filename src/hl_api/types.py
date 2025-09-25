@@ -164,8 +164,8 @@ class VerificationPayload:
     """Serializable representation of IVerifier.VerificationPayload."""
 
     verification_type: int
-    verification_data: bytes
-    proof: list[bytes]
+    verification_data: bytes | str
+    proof: list[bytes | str]
 
     @classmethod
     def default(cls) -> "VerificationPayload":
@@ -185,10 +185,10 @@ class VerificationPayload:
         )
 
         raw_data = data.get("verificationData") or data.get("verification_data") or b""
-        verification_data = _coerce_bytes(raw_data)
+        verification_data = _normalise_payload_value(raw_data)
 
         proof_items = data.get("proof") or data.get("proofs") or []
-        proof = [_coerce_bytes(item) for item in _iterable(proof_items)]
+        proof = [_normalise_payload_value(item) for item in _iterable(proof_items)]
 
         return cls(
             verification_type=verification_type, verification_data=verification_data, proof=proof
@@ -197,11 +197,15 @@ class VerificationPayload:
     def as_tuple(self) -> tuple[int, bytes, list[bytes]]:
         """Return the payload as tuple consumable by web3."""
 
-        return self.verification_type, self.verification_data, list(self.proof)
+        return (
+            self.verification_type,
+            _ensure_bytes(self.verification_data),
+            [_ensure_bytes(item) for item in self.proof],
+        )
 
 
-def _coerce_bytes(value: Any) -> bytes:
-    """Convert arbitrary values (hex/base64/iterables) into bytes."""
+def _normalise_payload_value(value: Any) -> bytes | str:
+    """Return bytes or hex string without unnecessary conversion."""
 
     if value is None:
         return b""
@@ -215,14 +219,14 @@ def _coerce_bytes(value: Any) -> bytes:
     if isinstance(value, str):
         lower = value.lower()
         if lower.startswith("0x"):
-            return Web3.to_bytes(hexstr=HexStr(value))
+            return lower
 
         try:
             import base64
 
             return base64.b64decode(value, validate=False)
         except Exception:
-            return value.encode("utf-8")
+            return value
 
     if isinstance(value, Iterable):
         return bytes(value)
@@ -231,7 +235,18 @@ def _coerce_bytes(value: Any) -> bytes:
         length = (value.bit_length() + 7) // 8 or 1
         return value.to_bytes(length, byteorder="big")
 
-    raise TypeError(f"Unsupported type for byte coercion: {type(value)!r}")
+    raise TypeError(f"Unsupported type for payload coercion: {type(value)!r}")
+
+
+def _ensure_bytes(value: bytes | str) -> bytes:
+    if isinstance(value, bytes):
+        return value
+
+    lower = value.lower()
+    if lower.startswith("0x"):
+        return Web3.to_bytes(hexstr=HexStr(lower))
+
+    return value.encode("utf-8")
 
 
 def _iterable(value: Any) -> Iterable:

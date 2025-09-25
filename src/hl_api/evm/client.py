@@ -15,7 +15,7 @@ from web3.types import ChecksumAddress
 
 from ..base import HLProtocolBase
 from ..constants import Precompile
-from ..evm_utils import build_verification_url, transaction_method
+from ..evm_utils import transaction_method
 from ..exceptions import NetworkError, ValidationError
 from ..types import (
     ApprovalResponse,
@@ -46,10 +46,10 @@ from .config import (
     DEFAULT_REQUEST_TIMEOUT,
     BridgeConfig,
     EVMClientConfig,
-    VerificationResolver,
 )
 from .connections import Web3Connections
 from .metadata import AssetMetadataCache
+from .proofs import FlexibleVaultProofResolver
 from .transactions import TransactionDispatcher
 
 logger = logging.getLogger(__name__)
@@ -67,8 +67,6 @@ class HLProtocolEVM(HLProtocolBase):
         bridge_strategy_address: str,
         *,
         request_timeout: float = DEFAULT_REQUEST_TIMEOUT,
-        verification_payload_url: str | None = None,
-        verification_payload_resolver: VerificationResolver | None = None,
         wait_for_receipt: bool = True,
         receipt_timeout: float = DEFAULT_RECEIPT_TIMEOUT,
         testnet: bool = True,
@@ -100,8 +98,6 @@ class HLProtocolEVM(HLProtocolBase):
             hl_strategy_address=hl_address,
             bridge_strategy_address=bridge_address,
             request_timeout=request_timeout,
-            verification_payload_url=verification_payload_url,
-            verification_payload_resolver=verification_payload_resolver,
             testnet=testnet,
             bridge=bridge_cfg,
         ).with_defaulted_urls()
@@ -116,16 +112,23 @@ class HLProtocolEVM(HLProtocolBase):
             receipt_timeout=config.bridge.receipt_timeout,
         )
         self._bridge_helper = CCTPBridge(config, self._connections, self._session)
-        self._verification_payload_resolver = verification_payload_resolver
+        self._flexible_proof_resolver = (
+            FlexibleVaultProofResolver(
+                config.flexible_vault,
+                self._connections,
+                self._session,
+                request_timeout=config.request_timeout,
+            )
+            if config.flexible_vault
+            else None
+        )
 
-        # Compatibility attributes (retained for external callers/tests)
         self._asset_by_symbol = self._metadata.asset_by_symbol
         self._token_index_by_symbol = self._metadata.token_index_by_symbol
         self._metadata_loaded = self._metadata.metadata_loaded
         self._hype_token_index: int | None = None
         self._connected = False
 
-        # Frequently referenced configuration mirrors (legacy attribute names)
         self._request_timeout = config.request_timeout
         self._wait_for_receipt = config.bridge.wait_for_receipt
         self._receipt_timeout = config.bridge.receipt_timeout
@@ -580,19 +583,8 @@ class HLProtocolEVM(HLProtocolBase):
     def _resolve_verification_payload(
         self, action: str, context: Mapping[str, Any]
     ) -> VerificationPayload:
-        resolver = self._config.verification_payload_resolver or self._verification_payload_resolver
-        if resolver:
-            result = resolver(action, context)
-            if isinstance(result, VerificationPayload):
-                return result
-            mapped = dict(result) if isinstance(result, Mapping) else None
-            return VerificationPayload.from_dict(mapped)
-
-        if self._config.verification_payload_url:
-            url = build_verification_url(self._config.verification_payload_url, action, context)
-            data = self._request_json("GET", url)
-            mapped = dict(data) if isinstance(data, Mapping) else None
-            return VerificationPayload.from_dict(mapped)
+        if self._flexible_proof_resolver:
+            return self._flexible_proof_resolver.resolve(action, context)
 
         return VerificationPayload.default()
 

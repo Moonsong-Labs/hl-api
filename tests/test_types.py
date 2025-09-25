@@ -21,9 +21,11 @@ def test_verification_payload_from_dict_hex() -> None:
     )
 
     assert payload.verification_type == 2
-    assert payload.verification_data == bytes.fromhex("1234")
+    assert payload.verification_data == "0x1234"
     assert len(payload.proof) == 1
-    assert payload.proof[0] == bytes(32)
+    assert payload.proof[0] == "0x" + "00" * 32
+    assert payload.as_tuple()[1] == bytes.fromhex("1234")
+    assert payload.as_tuple()[2][0] == bytes(32)
 
 
 def test_verification_payload_from_dict_base64() -> None:

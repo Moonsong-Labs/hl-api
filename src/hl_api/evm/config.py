@@ -2,16 +2,28 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 from web3.types import ChecksumAddress
 
-from ..types import VerificationPayload
+DEFAULT_FLEXIBLE_VAULT_PROOF_URL = (
+    "https://raw.githubusercontent.com/mellow-finance/flexible-vaults/"
+    "test-deployments/scripts/jsons/ethereum%3AtqETH%3Asubvault0.json"
+)
 
-VerificationResolver = Callable[
-    [str, Mapping[str, object]], VerificationPayload | Mapping[str, object]
-]
+
+@dataclass(frozen=True)
+class FlexibleVaultConfig:
+    """Configuration for fetching Mellow flexible vault proof blobs."""
+
+    proof_url: str = DEFAULT_FLEXIBLE_VAULT_PROOF_URL
+    action_descriptions: Mapping[str, str] = field(default_factory=dict)
+    default_description: str | None = "USDC.approve(TokenMessenger, any)"
+    verifier_address: str | None = None
+    verifier_network: str = "hyper"
+    check_merkle_root: bool = False
+    allowed_hosts: tuple[str, ...] = field(default_factory=tuple)
 
 
 DEFAULT_REQUEST_TIMEOUT = 10.0
@@ -47,11 +59,10 @@ class EVMClientConfig:
     hl_strategy_address: ChecksumAddress
     bridge_strategy_address: ChecksumAddress
     request_timeout: float = DEFAULT_REQUEST_TIMEOUT
-    verification_payload_url: str | None = None
-    verification_payload_resolver: VerificationResolver | None = None
     testnet: bool = True
     info_url: str | None = None
     bridge: BridgeConfig = BridgeConfig()
+    flexible_vault: FlexibleVaultConfig | None = None
 
     def with_defaulted_urls(self) -> EVMClientConfig:
         """Return a copy with default info/iris URLs based on network selection."""
@@ -80,6 +91,18 @@ class EVMClientConfig:
             cctp_finality_threshold=bridge.cctp_finality_threshold,
         )
 
+        flexible_vault = self.flexible_vault
+        if flexible_vault is not None:
+            flexible_vault = FlexibleVaultConfig(
+                proof_url=flexible_vault.proof_url,
+                action_descriptions=dict(flexible_vault.action_descriptions),
+                default_description=flexible_vault.default_description,
+                verifier_address=flexible_vault.verifier_address,
+                verifier_network=flexible_vault.verifier_network,
+                check_merkle_root=flexible_vault.check_merkle_root,
+                allowed_hosts=tuple(flexible_vault.allowed_hosts),
+            )
+
         return EVMClientConfig(
             private_key=self.private_key,
             hl_rpc_url=self.hl_rpc_url,
@@ -87,9 +110,8 @@ class EVMClientConfig:
             hl_strategy_address=self.hl_strategy_address,
             bridge_strategy_address=self.bridge_strategy_address,
             request_timeout=self.request_timeout,
-            verification_payload_url=self.verification_payload_url,
-            verification_payload_resolver=self.verification_payload_resolver,
             testnet=self.testnet,
             info_url=info_url,
             bridge=bridge,
+            flexible_vault=flexible_vault,
         )
