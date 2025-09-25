@@ -93,6 +93,7 @@ def test_fetch_requires_https() -> None:
 
 def test_resolver_loads_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = _example_payload()
+    payload["merkle_proofs"][0]["description"] = "any_action"
     session = DummySession(DummyResponse(payload))
     merkle_root = bytes.fromhex(payload["merkle_root"][2:])
     connections = cast(

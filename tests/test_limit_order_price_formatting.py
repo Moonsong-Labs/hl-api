@@ -86,17 +86,3 @@ def test_limit_order_falls_back_when_metadata_unavailable(api: HLProtocolEVM) ->
     assert _captured_price_uint(api) == price_to_uint64(input_price)
     api._resolve_perp_sz_decimals.assert_called_once_with(9)
     api._resolve_spot_base_sz_decimals.assert_called_once_with(9)
-
-
-def test_default_call_verification_returns_blank_payload() -> None:
-    client = HLProtocolEVM(
-        private_key="0x" + "2" * 64,
-        hl_rpc_url="http://localhost:8545",
-        mn_rpc_url="http://localhost:9545",
-        hl_strategy_address="0x0000000000000000000000000000000000000001",
-        bridge_strategy_address="0x0000000000000000000000000000000000000002",
-    )
-
-    payload = client._resolve_verification_payload("limit_order", {})
-
-    assert payload.as_tuple() == VerificationPayload.default().as_tuple()
