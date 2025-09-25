@@ -38,8 +38,6 @@ class CCTPBridge:
         *,
         verification_resolver: FlexibleVaultProofResolver | None = None,
         disable_call_verification: bool = False,
-        mainnet_json_name: str | None = None,
-        hyperliquid_json_name: str | None = None,
     ) -> None:
         self._config = config
         self._connections = connections
@@ -56,8 +54,6 @@ class CCTPBridge:
         self._cctp_finality_threshold = config.cctp_finality_threshold
         self._verification_resolver = verification_resolver
         self._call_verification_disabled = disable_call_verification
-        self._mainnet_json_name = mainnet_json_name
-        self._hyperliquid_json_name = hyperliquid_json_name
 
     # ------------------------------------------------------------------
     # Public entry points
@@ -421,29 +417,29 @@ class CCTPBridge:
             ]
 
         context = {"direction": direction.value, "amount_units": amount_units}
-        if direction == BridgeDirection.MAINNET_TO_HYPER:
-            json_name = self._mainnet_json_name
-            if not json_name and hasattr(resolver, "_datasets"):
+
+        json_name = None
+        if hasattr(resolver, "_datasets"):
+            if direction == BridgeDirection.MAINNET_TO_HYPER:
                 for title in resolver._datasets.keys():
                     if "mainnet" in title.lower() or "ethereum" in title.lower():
                         json_name = title
                         break
-        elif direction == BridgeDirection.HYPER_TO_MAINNET:
-            json_name = self._hyperliquid_json_name
-            if not json_name and hasattr(resolver, "_datasets"):
+            elif direction == BridgeDirection.HYPER_TO_MAINNET:
                 for title in resolver._datasets.keys():
                     if "hyperevm" in title.lower() or "hyperliquid" in title.lower():
                         json_name = title
                         break
-        else:
-            raise ValidationError(
-                "Unknown bridge direction",
-                field="direction",
-                value=direction,
-            )
+            else:
+                raise ValidationError(
+                    "Unknown bridge direction",
+                    field="direction",
+                    value=direction,
+                )
 
-        if not json_name and hasattr(resolver, "_datasets") and resolver._datasets:
-            json_name = next(iter(resolver._datasets.keys()))
+            # If no specific match found, use the first available dataset
+            if not json_name and resolver._datasets:
+                json_name = next(iter(resolver._datasets.keys()))
 
         if not json_name:
             json_name = "default"

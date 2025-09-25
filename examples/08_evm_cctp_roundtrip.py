@@ -59,9 +59,15 @@ def main() -> None:
 
     amount = float(os.getenv("BRIDGE_AMOUNT_USDC", str(DEFAULT_AMOUNT)))
 
-    proof_blob_path = Path(__file__).with_name("example_verification_blob.json")
-    with proof_blob_path.open("r", encoding="utf-8") as proof_file:
-        verification_blob = json.load(proof_file)
+    blobs_dir = Path(__file__).parent / "blobs"
+
+    blob_path_1 = blobs_dir / "example_verification_blob.json"
+    with blob_path_1.open("r", encoding="utf-8") as f:
+        verification_blob_1 = json.load(f)
+
+    blob_path_2 = blobs_dir / "example_verification_blob2.json"
+    with blob_path_2.open("r", encoding="utf-8") as f:
+        verification_blob_2 = json.load(f)
 
     client = HLProtocolEVM(
         private_key=private_key,
@@ -70,7 +76,7 @@ def main() -> None:
         hl_strategy_address=hl_strategy_address,
         bridge_strategy_address=bridge_strategy_address,
         testnet=testnet,
-        flexible_vault_proof_blob=verification_blob,
+        flexible_vault_proof_blob=[verification_blob_1, verification_blob_2],
     )
 
     client.connect()

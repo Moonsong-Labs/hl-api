@@ -101,9 +101,7 @@ class TestCloid:
     def test_generate_cloid(self):
         """Test generating client order ID."""
         cloid = generate_cloid()
-        # Check it's a hex string
         assert cloid.startswith("0x")
-        # Convert and check range
         cloid_int = int(cloid, 16)
         assert 1 <= cloid_int <= 2**128 - 1
 

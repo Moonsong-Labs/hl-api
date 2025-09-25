@@ -83,19 +83,19 @@ def _example_payload() -> dict[str, Any]:
     }
 
 
-def test_fetch_requires_https() -> None:
+def test_fetch_requires_blob() -> None:
     config = EVMClientConfig(
         private_key="0x" + "0" * 64,
         hl_rpc_url="https://example.com",
         mn_rpc_url="https://example.com",
         hl_strategy_address=Web3.to_checksum_address("0x" + "0" * 40),
         bridge_strategy_address=Web3.to_checksum_address("0x" + "0" * 40),
-        flexible_vault_proof_url="http://example.com/proof.json",
+        # No flexible_vault_proof_blob provided
     )
     session = DummySession(DummyResponse({}))
     manager = ProofManager(session, request_timeout=1.0)
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="No proof datasets provided"):
         manager.fetch(config)
 
 
@@ -118,9 +118,9 @@ def test_resolver_loads_payload(monkeypatch: pytest.MonkeyPatch) -> None:
         mn_rpc_url="https://example.com",
         hl_strategy_address=Web3.to_checksum_address("0x" + "0" * 40),
         bridge_strategy_address=Web3.to_checksum_address("0x" + "0" * 40),
-        flexible_vault_proof_url="https://example.com/proof.json",
         flexible_vault_verifier_address="0x0000000000000000000000000000000000000001",
         flexible_vault_check_merkle_root=True,
+        flexible_vault_proof_blob=payload,  # Provide blob inline
     )
 
     resolver = FlexibleVaultProofResolver(
@@ -130,10 +130,10 @@ def test_resolver_loads_payload(monkeypatch: pytest.MonkeyPatch) -> None:
         request_timeout=1.0,
     )
 
-    payload = resolver.resolve("any_action", "ethereum:tqETH:subvault0")
-    assert payload.verification_type == 3
-    assert payload.verification_data == "0x01"
-    assert payload.as_tuple()[1] == bytes.fromhex("01")
+    result = resolver.resolve("any_action", "ethereum:tqETH:subvault0")
+    assert result.verification_type == 3
+    assert result.verification_data == "0x01"
+    assert result.as_tuple()[1] == bytes.fromhex("01")
 
 
 def test_resolver_missing_description_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -153,7 +153,7 @@ def test_resolver_missing_description_raises(monkeypatch: pytest.MonkeyPatch) ->
         mn_rpc_url="https://example.com",
         hl_strategy_address=Web3.to_checksum_address("0x" + "0" * 40),
         bridge_strategy_address=Web3.to_checksum_address("0x" + "0" * 40),
-        flexible_vault_proof_url="https://example.com/proof.json",
+        flexible_vault_proof_blob=payload,  # Provide blob inline
     )
 
     resolver = FlexibleVaultProofResolver(
@@ -163,5 +163,5 @@ def test_resolver_missing_description_raises(monkeypatch: pytest.MonkeyPatch) ->
         request_timeout=1.0,
     )
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="No proofs available for description"):
         resolver.resolve("special_action", "ethereum:tqETH:subvault0")

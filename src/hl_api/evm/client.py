@@ -77,10 +77,8 @@ class HLProtocolEVM(HLProtocolBase):
         hyperliquid_domain: int | None = None,
         mainnet_domain: int | None = None,
         cctp_finality_threshold: int = DEFAULT_CCTP_FINALITY_THRESHOLD,
-        flexible_vault_proof_blob: Mapping[str, Any] | None = None,
+        flexible_vault_proof_blob: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
         disable_call_verification: bool = False,
-        hl_strategy_json_name: str | None = None,
-        bridge_strategy_json_name: str | None = None,
     ) -> None:
         hl_address = Web3.to_checksum_address(hl_strategy_address)
         bridge_address = Web3.to_checksum_address(bridge_strategy_address)
@@ -130,8 +128,6 @@ class HLProtocolEVM(HLProtocolBase):
             self._session,
             verification_resolver=self._flexible_proof_resolver,
             disable_call_verification=self._call_verification_disabled,
-            mainnet_json_name=bridge_strategy_json_name,  # For operations originating on mainnet
-            hyperliquid_json_name=hl_strategy_json_name,  # For operations originating on HyperEVM
         )
 
         self._asset_by_symbol = self._metadata.asset_by_symbol
@@ -139,8 +135,6 @@ class HLProtocolEVM(HLProtocolBase):
         self._metadata_loaded = self._metadata.metadata_loaded
         self._hype_token_index: int | None = None
         self._connected = False
-        self._hl_strategy_json_name = hl_strategy_json_name
-        self._bridge_strategy_json_name = bridge_strategy_json_name
 
     # ------------------------------------------------------------------
     # Connection management
@@ -372,7 +366,6 @@ class HLProtocolEVM(HLProtocolBase):
             "tif": tif_uint,
             "cloid": cloid_uint,
         }
-        # All these operations happen on HyperEVM chain
         json_name = self._get_json_name_for_chain("hyperliquid")
         payload = self._resolve_verification_payload(
             "CoreWriter.sendRawAction{action: limit_order}(anyBytes)", json_name, context
@@ -402,7 +395,7 @@ class HLProtocolEVM(HLProtocolBase):
         asset_id = self._resolve_asset_id(asset)
         oid = int(order_id)
         context = {"asset": asset_id, "oid": oid}
-        # All these operations happen on HyperEVM chain
+
         json_name = self._get_json_name_for_chain("hyperliquid")
         payload = self._resolve_verification_payload(
             "CoreWriter.sendRawAction{action: cancel_oid}(anyBytes)", json_name, context
@@ -423,7 +416,6 @@ class HLProtocolEVM(HLProtocolBase):
         asset_id = self._resolve_asset_id(asset)
         cloid_uint = cloid_to_uint128(cloid)
         context = {"asset": asset_id, "cloid": cloid_uint}
-        # All these operations happen on HyperEVM chain
         json_name = self._get_json_name_for_chain("hyperliquid")
         payload = self._resolve_verification_payload(
             "CoreWriter.sendRawAction{action: cancel_cloid}(anyBytes)", json_name, context
@@ -451,7 +443,7 @@ class HLProtocolEVM(HLProtocolBase):
     def spot_send(self, recipient: str, token: str, amount: float, destination: str) -> Response:
         amount_uint = to_uint64(amount, 8)
         context = {"token": token, "amount": amount_uint, "recipient": recipient}
-        # All these operations happen on HyperEVM chain
+
         json_name = self._get_json_name_for_chain("hyperliquid")
         payload = self._resolve_verification_payload(
             "CoreWriter.sendRawAction{action: spot_send}(anyBytes)", json_name, context
@@ -510,7 +502,7 @@ class HLProtocolEVM(HLProtocolBase):
     def usd_class_transfer_to_perp(self, amount: float) -> Response:
         amount_uint = to_uint64(amount, 6)
         context = {"amount": amount_uint}
-        # All these operations happen on HyperEVM chain
+
         json_name = self._get_json_name_for_chain("hyperliquid")
         payload = self._resolve_verification_payload(
             "CoreWriter.sendRawAction{action: usd_transfer}(anyBytes)", json_name, context
@@ -530,7 +522,7 @@ class HLProtocolEVM(HLProtocolBase):
     def usd_class_transfer_to_spot(self, amount: float) -> Response:
         amount_uint = to_uint64(amount, 6)
         context = {"amount": amount_uint}
-        # All these operations happen on HyperEVM chain
+
         json_name = self._get_json_name_for_chain("hyperliquid")
         payload = self._resolve_verification_payload(
             "CoreWriter.sendRawAction{action: usd_transfer}(anyBytes)", json_name, context
@@ -662,31 +654,22 @@ class HLProtocolEVM(HLProtocolBase):
         Args:
             chain: Either "hyperliquid" for operations on HyperEVM or "mainnet" for operations on mainnet
         """
-        if chain == "mainnet":
-            if self._bridge_strategy_json_name:
-                return self._bridge_strategy_json_name
-            # Try to auto-detect from available datasets if resolver exists
-            if self._flexible_proof_resolver and hasattr(
-                self._flexible_proof_resolver, "_datasets"
-            ):
-                # Look for a dataset for mainnet operations
+        if self._flexible_proof_resolver and hasattr(self._flexible_proof_resolver, "_datasets"):
+            if chain == "mainnet":
                 for title in self._flexible_proof_resolver._datasets.keys():
                     if "mainnet" in title.lower() or "ethereum" in title.lower():
                         return title
-        else:  # hyperliquid chain operations
-            if self._hl_strategy_json_name:
-                return self._hl_strategy_json_name
-            # Try to auto-detect from available datasets
-            if self._flexible_proof_resolver and hasattr(
-                self._flexible_proof_resolver, "_datasets"
-            ):
-                # Look for a dataset for HyperEVM operations
+            elif chain == "hyperliquid":  # hyperliquid chain operations
                 for title in self._flexible_proof_resolver._datasets.keys():
                     if "hyperevm" in title.lower() or "hyperliquid" in title.lower():
                         return title
+            else:
+                raise ValidationError(
+                    "Chain must be either 'hyperliquid' or 'mainnet'",
+                    field="chain",
+                    value=chain,
+                )
 
-        # If no specific json_name found, try to use the first available
-        if self._flexible_proof_resolver and hasattr(self._flexible_proof_resolver, "_datasets"):
             datasets = self._flexible_proof_resolver._datasets
             if datasets:
                 return next(iter(datasets.keys()))

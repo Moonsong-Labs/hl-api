@@ -13,10 +13,6 @@ DEFAULT_RECEIPT_TIMEOUT = 120.0
 DEFAULT_IRIS_POLL_INTERVAL = 2.0
 DEFAULT_IRIS_MAX_POLLS = 100
 DEFAULT_CCTP_FINALITY_THRESHOLD = 1000
-DEFAULT_FLEXIBLE_VAULT_PROOF_URL = (
-    "https://raw.githubusercontent.com/mellow-finance/flexible-vaults/"
-    "test-deployments/scripts/jsons/ethereum%3AtqETH%3Asubvault0.json"
-)
 IRIS_API_SANDBOX = "https://iris-api-sandbox.circle.com"
 IRIS_API_PROD = "https://iris-api.circle.com"
 
@@ -42,7 +38,6 @@ class EVMClientConfig:
     mainnet_domain: int | None = None
     cctp_finality_threshold: int = DEFAULT_CCTP_FINALITY_THRESHOLD
 
-    flexible_vault_proof_url: str | Sequence[str] = DEFAULT_FLEXIBLE_VAULT_PROOF_URL
     flexible_vault_verifier_address: str | None = None
     flexible_vault_verifier_network: str = "hyper"
     flexible_vault_check_merkle_root: bool = False
