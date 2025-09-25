@@ -23,7 +23,6 @@ class FlexibleVaultConfig:
     verifier_address: str | None = None
     verifier_network: str = "hyper"
     check_merkle_root: bool = False
-    allowed_hosts: tuple[str, ...] = field(default_factory=tuple)
 
 
 DEFAULT_REQUEST_TIMEOUT = 10.0
@@ -96,11 +95,9 @@ class EVMClientConfig:
             flexible_vault = FlexibleVaultConfig(
                 proof_url=flexible_vault.proof_url,
                 action_descriptions=dict(flexible_vault.action_descriptions),
-                default_description=flexible_vault.default_description,
                 verifier_address=flexible_vault.verifier_address,
                 verifier_network=flexible_vault.verifier_network,
                 check_merkle_root=flexible_vault.check_merkle_root,
-                allowed_hosts=tuple(flexible_vault.allowed_hosts),
             )
 
         return EVMClientConfig(

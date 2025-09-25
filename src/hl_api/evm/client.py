@@ -46,6 +46,7 @@ from .config import (
     DEFAULT_REQUEST_TIMEOUT,
     BridgeConfig,
     EVMClientConfig,
+    FlexibleVaultConfig,
 )
 from .connections import Web3Connections
 from .metadata import AssetMetadataCache
@@ -76,6 +77,8 @@ class HLProtocolEVM(HLProtocolBase):
         hyperliquid_domain: int | None = None,
         mainnet_domain: int | None = None,
         cctp_finality_threshold: int = DEFAULT_CCTP_FINALITY_THRESHOLD,
+        flexible_vault: FlexibleVaultConfig | None = None,
+        disable_call_verification: bool = True,
     ) -> None:
         hl_address = cast(ChecksumAddress, validate_address(hl_strategy_address))
         bridge_address = cast(ChecksumAddress, validate_address(bridge_strategy_address))
@@ -91,6 +94,13 @@ class HLProtocolEVM(HLProtocolBase):
             cctp_finality_threshold=cctp_finality_threshold,
         )
 
+        if disable_call_verification:
+            flexible_vault_config: FlexibleVaultConfig | None = None
+        elif flexible_vault is None:
+            flexible_vault_config = FlexibleVaultConfig()
+        else:
+            flexible_vault_config = flexible_vault
+
         config = EVMClientConfig(
             private_key=private_key,
             hl_rpc_url=hl_rpc_url,
@@ -100,6 +110,7 @@ class HLProtocolEVM(HLProtocolBase):
             request_timeout=request_timeout,
             testnet=testnet,
             bridge=bridge_cfg,
+            flexible_vault=flexible_vault_config,
         ).with_defaulted_urls()
 
         self._config = config
@@ -122,21 +133,13 @@ class HLProtocolEVM(HLProtocolBase):
             if config.flexible_vault
             else None
         )
+        self._call_verification_disabled = disable_call_verification
 
         self._asset_by_symbol = self._metadata.asset_by_symbol
         self._token_index_by_symbol = self._metadata.token_index_by_symbol
         self._metadata_loaded = self._metadata.metadata_loaded
         self._hype_token_index: int | None = None
         self._connected = False
-
-        self._request_timeout = config.request_timeout
-        self._wait_for_receipt = config.bridge.wait_for_receipt
-        self._receipt_timeout = config.bridge.receipt_timeout
-        self._iris_base_url = config.bridge.iris_base_url
-        self._iris_poll_interval = config.bridge.iris_poll_interval
-        self._iris_max_polls = config.bridge.iris_max_polls
-        self._cctp_finality_threshold = config.bridge.cctp_finality_threshold
-        self._info_url = config.info_url
 
     # ------------------------------------------------------------------
     # Connection management
@@ -373,20 +376,6 @@ class HLProtocolEVM(HLProtocolBase):
         logger.warning("vault_transfer not supported for vault %s", vault)
         return TransferResponse(success=False, amount=None, error=message)
 
-    def token_delegate(
-        self, validator: str, amount: float, is_undelegate: bool = False
-    ) -> DelegateResponse:
-        message = "Token delegation is not routed through the current strategy"
-        return DelegateResponse(success=False, validator=validator, amount=None, error=message)
-
-    def staking_deposit(self, amount: float) -> StakingResponse:
-        message = "Staking deposit is not supported by the HyperliquidStrategy contract"
-        return StakingResponse(success=False, amount=None, error=message)
-
-    def staking_withdraw(self, amount: float) -> StakingResponse:
-        message = "Staking withdrawal is not supported by the HyperliquidStrategy contract"
-        return StakingResponse(success=False, amount=None, error=message)
-
     @transaction_method("spot_send", SendResponse)
     def spot_send(
         self, recipient: str, token: str, amount: float, destination: str
@@ -454,14 +443,6 @@ class HLProtocolEVM(HLProtocolBase):
         args = [amount_uint, payload.as_tuple()]
 
         return "transferPerpToSpot", args, context, {"amount": amount}  # type: ignore[return-value]
-
-    def finalize_subaccount(self, subaccount: str) -> FinalizeResponse:
-        message = "Subaccount finalization must be executed via CoreWriter directly"
-        return FinalizeResponse(success=False, subaccount=subaccount, error=message)
-
-    def approve_builder_fee(self, builder: str, fee: float, nonce: int) -> ApprovalResponse:
-        message = "Builder fee approvals are not implemented on the strategy contract"
-        return ApprovalResponse(success=False, builder=builder, fee=fee, nonce=nonce, error=message)
 
     # ------------------------------------------------------------------
     # Market data helpers
@@ -551,6 +532,7 @@ class HLProtocolEVM(HLProtocolBase):
         return float(formatted)
 
     def _format_limit_price(self, asset_id: int, limit_px: float | Decimal) -> float | Decimal:
+        """Format price according to asset's tick size requirements."""
         sz_decimals = self._resolve_perp_sz_decimals(asset_id)
         if sz_decimals is not None:
             formatted = format_price_for_api(limit_px, sz_decimals, is_perp=True)
@@ -581,11 +563,21 @@ class HLProtocolEVM(HLProtocolBase):
         return self._metadata.resolve_spot_base_sz_decimals(asset_id)
 
     def _resolve_verification_payload(
-        self, action: str, context: Mapping[str, Any]
+        self, action: str, context: Mapping[str, Any], proof_desc: str | None = None
     ) -> VerificationPayload:
-        if self._flexible_proof_resolver:
-            return self._flexible_proof_resolver.resolve(action, context)
+        if self._call_verification_disabled:
+            logger.debug(
+                "Call verification disabled; returning default payload for action '%s'", action
+            )
+            return VerificationPayload.default()
 
+        if self._flexible_proof_resolver:
+            return self._flexible_proof_resolver.resolve(action, context, proof_desc)
+
+        logger.warning(
+            "No flexible vault proof resolver configured; returning default payload for action '%s'",
+            action,
+        )
         return VerificationPayload.default()
 
     # ------------------------------------------------------------------

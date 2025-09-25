@@ -118,46 +118,6 @@ class HLProtocolBase(ABC):
         pass
 
     @abstractmethod
-    def token_delegate(
-        self, validator: str, amount: float, is_undelegate: bool = False
-    ) -> DelegateResponse:
-        """Delegate or undelegate tokens (CoreWriter Action ID 3).
-
-        Args:
-            validator: Validator address
-            amount: Amount to delegate/undelegate as float
-            is_undelegate: True to undelegate, False to delegate
-
-        Returns:
-            DelegateResponse with delegation details or error
-        """
-        pass
-
-    @abstractmethod
-    def staking_deposit(self, amount: float) -> StakingResponse:
-        """Deposit tokens for staking (CoreWriter Action ID 4).
-
-        Args:
-            amount: Amount to stake as float
-
-        Returns:
-            StakingResponse with staking details or error
-        """
-        pass
-
-    @abstractmethod
-    def staking_withdraw(self, amount: float) -> StakingResponse:
-        """Withdraw staked tokens (CoreWriter Action ID 5).
-
-        Args:
-            amount: Amount to withdraw as float
-
-        Returns:
-            StakingResponse with withdrawal details or error
-        """
-        pass
-
-    @abstractmethod
     def spot_send(
         self, recipient: str, token: str, amount: float, destination: str
     ) -> SendResponse:
@@ -235,20 +195,6 @@ class HLProtocolBase(ABC):
 
         Returns:
             CancelResponse with cancellation details or error
-        """
-        pass
-
-    @abstractmethod
-    def approve_builder_fee(self, builder: str, fee: float, nonce: int) -> ApprovalResponse:
-        """Approve builder fee (CoreWriter Action ID 12).
-
-        Args:
-            builder: Builder address
-            fee: Fee amount as float
-            nonce: Nonce for the approval
-
-        Returns:
-            ApprovalResponse with approval details or error
         """
         pass
 

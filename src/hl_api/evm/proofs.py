@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import ipaddress
 import logging
-import socket
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
 
 import requests
 from web3 import Web3
@@ -61,8 +58,6 @@ class ProofManager:
         cached = self._cache.get(url)
         if cached is not None:
             return cached
-
-        self._validate_source_url(url, config.allowed_hosts)
 
         logger.debug("Fetching flexible vault proof set from %s", url)
         try:
@@ -159,74 +154,6 @@ class ProofManager:
 
         self._validated_roots.add(cache_key)
 
-    def _validate_source_url(self, url: str, allowed_hosts: tuple[str, ...]) -> None:
-        try:
-            parsed = urlparse(url)
-        except ValueError as exc:
-            raise ValidationError("Invalid proof source URL", field="url", value=url) from exc
-
-        scheme = (parsed.scheme or "").lower()
-        if scheme != "https":
-            raise ValidationError(
-                "Proof source URL must use https",
-                field="url",
-                value=url,
-                details={"scheme": parsed.scheme},
-            )
-
-        hostname = (parsed.hostname or "").strip()
-        if not hostname:
-            raise ValidationError(
-                "Proof source URL must include a hostname", field="url", value=url
-            )
-
-        lowered = hostname.lower()
-        if lowered in {"localhost", "127.0.0.1", "::1"}:
-            raise ValidationError(
-                "Localhost URLs are not permitted for proof sources", field="url", value=url
-            )
-
-        if parsed.username or parsed.password:
-            raise ValidationError(
-                "Authentication information is not permitted in proof source URLs",
-                field="url",
-                value=url,
-            )
-
-        allowed_lower = tuple(h.lower() for h in allowed_hosts if h)
-        if allowed_lower and not _host_in_allowed(lowered, allowed_lower):
-            raise ValidationError(
-                "Proof source hostname is not in the allowed list",
-                field="url",
-                value=url,
-                details={"allowed_hosts": allowed_lower},
-            )
-
-        try:
-            resolved = socket.getaddrinfo(hostname, None)
-        except socket.gaierror as exc:
-            raise ValidationError(
-                "Unable to resolve proof source hostname",
-                field="url",
-                value=url,
-                details={"error": str(exc)},
-            ) from exc
-
-        for addr_info in resolved:
-            try:
-                ip_str = addr_info[4][0]
-                ip_obj = ipaddress.ip_address(ip_str)
-            except (IndexError, ValueError):
-                continue
-
-            if not ip_obj.is_global and lowered not in allowed_lower:
-                raise ValidationError(
-                    "Proof source IP address must be globally routable",
-                    field="url",
-                    value=url,
-                    details={"ip": ip_str},
-                )
-
 
 _HARDCODED_ACTION_DESCRIPTIONS: dict[str, str] = {
     "WETH.approve": "WETH.approve(TokenMessenger, any)",
@@ -253,16 +180,23 @@ class FlexibleVaultProofResolver:
         self._manager.ensure_merkle_root(config, self._dataset, connections)
 
     def resolve(
-        self, action: str, _context: Mapping[str, Any] | None = None
+        self, action: str, _context: Mapping[str, Any] | None = None, description: str | None = None
     ) -> VerificationPayload:
         if not self._config:
             raise ValidationError(
                 "Flexible vault proofs are not configured", field="flexible_vault"
             )
 
-        description = self._resolve_description(action)
+        description = description or self._resolve_description(action)
+        logger.debug(
+            "Resolving flexible vault proof for action '%s' using description '%s'",
+            action,
+            description,
+        )
         payload = self._dataset.payloads.get(description)
         if payload is None:
+            available_payloads = sorted(self._dataset.payloads.keys())
+            logger.warning("Proofs available: %s", available_payloads)
             raise ValidationError(
                 "No proofs available for configured description",
                 field="description",
@@ -271,7 +205,7 @@ class FlexibleVaultProofResolver:
             )
 
         result = VerificationPayload.from_dict(dict(payload))
-        logger.info(
+        logger.debug(
             "Flexible vault proof for action '%s' uses '%s' (url=%s, proof=%s)",
             action,
             description,
@@ -337,15 +271,6 @@ def _select_web3(connections: Web3Connections, network_label: str | None) -> Web
     if label in {"mainnet", "ethereum", "eth"}:
         return connections.mainnet_web3
     raise ValidationError("Unknown proof source network", field="network", value=network_label)
-
-
-def _host_in_allowed(hostname: str, allowed_hosts: tuple[str, ...]) -> bool:
-    for allowed in allowed_hosts:
-        if hostname == allowed:
-            return True
-        if "." in hostname and hostname.endswith(f".{allowed}"):
-            return True
-    return False
 
 
 __all__ = ["FlexibleVaultProofResolver", "ProofDataset", "ProofManager"]

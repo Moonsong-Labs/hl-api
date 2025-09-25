@@ -7,8 +7,8 @@ import pytest
 from requests import Session
 
 from hl_api.evm.config import FlexibleVaultConfig
-from hl_api.evm.proofs import FlexibleVaultProofResolver, ProofManager
 from hl_api.evm.connections import Web3Connections
+from hl_api.evm.proofs import FlexibleVaultProofResolver, ProofManager
 from hl_api.exceptions import ValidationError
 
 

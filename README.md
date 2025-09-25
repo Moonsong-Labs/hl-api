@@ -183,17 +183,9 @@ All operations correspond to CoreWriter precompile actions:
 | Method | Action ID | Description |
 |--------|-----------|-------------|
 | `limit_order` | 1 | Place a limit order |
-| `vault_transfer` | 2 | Transfer to/from vault |
-| `token_delegate` | 3 | Delegate/undelegate tokens |
-| `staking_deposit` | 4 | Deposit for staking |
-| `staking_withdraw` | 5 | Withdraw from staking |
-| `spot_send` | 6 | Send spot tokens |
-| `perp_send` | 7 | Send perp collateral |
-| `usd_class_transfer_to_perp` | 8 | Transfer USD to perp |
-| `usd_class_transfer_to_spot` | 9 | Transfer USD to spot |
-| `cancel_order` | 10 | Cancel order by cloid |
-| `finalize_subaccount` | 11 | Finalize subaccount |
-| `approve_builder_fee` | 12 | Approve builder fee |
+| `spot_send` | 6 | Transfer tokens from Core to EVM |
+| `usd_class_transfer_to_perp/spot` | 7 | Transfer USD to/from perp |
+| `cancel_order` | 10/11 | Cancel order by cloid or oid |
 
 ## Integration
 

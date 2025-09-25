@@ -23,6 +23,7 @@ def test_market_order_price_formatting():
         mn_rpc_url="http://localhost:9545",  # Dummy mainnet RPC URL
         hl_strategy_address="0x" + "0" * 40,  # Dummy HyperLiquid strategy address
         bridge_strategy_address="0x0000000000000000000000000000000000000001",  # Dummy bridge address
+        disable_call_verification=True,
     )
 
     # Mock the internal methods to avoid actual network calls
