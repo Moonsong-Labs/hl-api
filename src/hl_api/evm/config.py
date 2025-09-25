@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from web3.types import ChecksumAddress
 
@@ -18,8 +17,6 @@ class FlexibleVaultConfig:
     """Configuration for fetching Mellow flexible vault proof blobs."""
 
     proof_url: str = DEFAULT_FLEXIBLE_VAULT_PROOF_URL
-    action_descriptions: Mapping[str, str] = field(default_factory=dict)
-    default_description: str | None = "USDC.approve(TokenMessenger, any)"
     verifier_address: str | None = None
     verifier_network: str = "hyper"
     check_merkle_root: bool = False
@@ -94,7 +91,6 @@ class EVMClientConfig:
         if flexible_vault is not None:
             flexible_vault = FlexibleVaultConfig(
                 proof_url=flexible_vault.proof_url,
-                action_descriptions=dict(flexible_vault.action_descriptions),
                 verifier_address=flexible_vault.verifier_address,
                 verifier_network=flexible_vault.verifier_network,
                 check_merkle_root=flexible_vault.check_merkle_root,

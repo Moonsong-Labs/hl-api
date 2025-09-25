@@ -18,7 +18,6 @@ from .exceptions import (
 )
 from .types import (
     TIF,
-    # Enums
     ActionID,
     Address,
     ApprovalResponse,
@@ -26,9 +25,7 @@ from .types import (
     CancelResponse,
     DelegateResponse,
     FinalizeResponse,
-    # Response types
     OrderResponse,
-    # Type aliases
     Price,
     SendResponse,
     Size,

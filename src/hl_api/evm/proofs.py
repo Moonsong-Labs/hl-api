@@ -155,12 +155,6 @@ class ProofManager:
         self._validated_roots.add(cache_key)
 
 
-_HARDCODED_ACTION_DESCRIPTIONS: dict[str, str] = {
-    "WETH.approve": "WETH.approve(TokenMessenger, any)",
-    "USDC.approve": "USDC.approve(TokenMessenger, any)",
-}
-
-
 class FlexibleVaultProofResolver:
     """Coordinate flexible vault proof retrieval and payload construction."""
 
@@ -180,17 +174,15 @@ class FlexibleVaultProofResolver:
         self._manager.ensure_merkle_root(config, self._dataset, connections)
 
     def resolve(
-        self, action: str, _context: Mapping[str, Any] | None = None, description: str | None = None
+        self, description: str, _context: Mapping[str, Any] | None = None,
     ) -> VerificationPayload:
         if not self._config:
             raise ValidationError(
                 "Flexible vault proofs are not configured", field="flexible_vault"
             )
 
-        description = description or self._resolve_description(action)
         logger.debug(
-            "Resolving flexible vault proof for action '%s' using description '%s'",
-            action,
+            "Resolving flexible vault proof for description '%s'",
             description,
         )
         payload = self._dataset.payloads.get(description)
@@ -206,32 +198,12 @@ class FlexibleVaultProofResolver:
 
         result = VerificationPayload.from_dict(dict(payload))
         logger.debug(
-            "Flexible vault proof for action '%s' uses '%s' (url=%s, proof=%s)",
-            action,
+            "Flexible vault proof for description '%s' uses '%s' (url=%s, proof=%s)",
             description,
             self._dataset.url,
             _preview_proof(result),
         )
         return result
-
-    def _resolve_description(self, action: str) -> str:
-        mapped = self._config.action_descriptions.get(action)
-        if mapped:
-            return mapped
-
-        builtin = _HARDCODED_ACTION_DESCRIPTIONS.get(action)
-        if builtin:
-            return builtin
-
-        if self._config.default_description:
-            return self._config.default_description
-
-        raise ValidationError(
-            "No proof description configured for action",
-            field="action",
-            value=action,
-            details={"available": sorted(self._dataset.payloads.keys())},
-        )
 
 
 def _expect_str(value: Any, field: str) -> str:

@@ -105,7 +105,6 @@ def test_resolver_loads_payload(monkeypatch: pytest.MonkeyPatch) -> None:
 
     config = FlexibleVaultConfig(
         proof_url="https://example.com/proof.json",
-        default_description="USDC.approve(TokenMessenger, any)",
         verifier_address="0x0000000000000000000000000000000000000001",
         check_merkle_root=True,
     )
@@ -136,8 +135,6 @@ def test_resolver_missing_description_raises(monkeypatch: pytest.MonkeyPatch) ->
 
     config = FlexibleVaultConfig(
         proof_url="https://example.com/proof.json",
-        action_descriptions={"special_action": "non-existent"},
-        default_description=None,
     )
 
     resolver = FlexibleVaultProofResolver(

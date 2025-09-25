@@ -45,7 +45,7 @@ def main() -> None:
         mn_rpc_url=mn_rpc_url,
         hl_strategy_address=hl_strategy_address,
         bridge_strategy_address=bridge_address,
-        disable_call_verification=True,
+        # disable_call_verification=True,
     )
 
     client.connect()
