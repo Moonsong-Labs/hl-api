@@ -8,15 +8,28 @@ from typing import Any
 
 from web3.types import ChecksumAddress
 
+DEFAULT_FLEXIBLE_VAULT_PROOF_URL = (
+    "https://raw.githubusercontent.com/mellow-finance/flexible-vaults/"
+    "test-deployments/scripts/jsons/ethereum%3AtqETH%3Asubvault0.json"
+)
+
+
+@dataclass(frozen=True)
+class FlexibleVaultConfig:
+    """Configuration for fetching Mellow flexible vault proof blobs."""
+
+    proof_url: str = DEFAULT_FLEXIBLE_VAULT_PROOF_URL
+    verifier_address: str | None = None
+    verifier_network: str = "hyper"
+    check_merkle_root: bool = False
+    proof_blob: Mapping[str, Any] | None = None
+
+
 DEFAULT_REQUEST_TIMEOUT = 10.0
 DEFAULT_RECEIPT_TIMEOUT = 120.0
 DEFAULT_IRIS_POLL_INTERVAL = 2.0
 DEFAULT_IRIS_MAX_POLLS = 100
 DEFAULT_CCTP_FINALITY_THRESHOLD = 1000
-DEFAULT_FLEXIBLE_VAULT_PROOF_URL = (
-    "https://raw.githubusercontent.com/mellow-finance/flexible-vaults/"
-    "test-deployments/scripts/jsons/ethereum%3AtqETH%3Asubvault0.json"
-)
 IRIS_API_SANDBOX = "https://iris-api-sandbox.circle.com"
 IRIS_API_PROD = "https://iris-api.circle.com"
 
