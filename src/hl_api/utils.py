@@ -9,6 +9,49 @@ from .exceptions import ValidationError
 from .types import TIF
 
 
+def to_uint64(value: float | Decimal | int, decimals: int = 8, field_name: str = "value") -> int:
+    """Convert a value to uint64 representation.
+
+    Args:
+        value: Value as float, Decimal, or int
+        decimals: Number of decimal places (default 8 for HyperLiquid)
+        field_name: Name of field for error messages (default "value")
+
+    Returns:
+        Value as uint64
+
+    Raises:
+        ValidationError: If value is invalid
+    """
+    if value < 0:
+        raise ValidationError(f"{field_name} cannot be negative", field=field_name, value=value)
+
+    if isinstance(value, float | int):
+        value = Decimal(str(value))
+
+    multiplier = Decimal(10**decimals)
+    uint_value = int(value * multiplier)
+
+    if uint_value > 2**64 - 1:
+        raise ValidationError(f"{field_name} exceeds uint64 maximum", field=field_name, value=value)
+
+    return uint_value
+
+
+def from_uint64(uint_value: int, decimals: int = 8) -> Decimal:
+    """Convert uint64 to Decimal.
+
+    Args:
+        uint_value: Value as uint64
+        decimals: Number of decimal places (default 8)
+
+    Returns:
+        Value as Decimal
+    """
+    divisor = Decimal(10**decimals)
+    return Decimal(uint_value) / divisor
+
+
 def price_to_uint64(price: float | Decimal | int, decimals: int = 8) -> int:
     """Convert a price to uint64 representation.
 
@@ -22,19 +65,7 @@ def price_to_uint64(price: float | Decimal | int, decimals: int = 8) -> int:
     Raises:
         ValidationError: If price is invalid
     """
-    if price < 0:
-        raise ValidationError("Price cannot be negative", field="price", value=price)
-
-    if isinstance(price, float | int):
-        price = Decimal(str(price))
-
-    multiplier = Decimal(10**decimals)
-    uint_price = int(price * multiplier)
-
-    if uint_price > 2**64 - 1:
-        raise ValidationError("Price exceeds uint64 maximum", field="price", value=price)
-
-    return uint_price
+    return to_uint64(price, decimals, "price")
 
 
 def uint64_to_price(uint_price: int, decimals: int = 8) -> Decimal:
@@ -47,8 +78,7 @@ def uint64_to_price(uint_price: int, decimals: int = 8) -> Decimal:
     Returns:
         Price as Decimal
     """
-    divisor = Decimal(10**decimals)
-    return Decimal(uint_price) / divisor
+    return from_uint64(uint_price, decimals)
 
 
 def size_to_uint64(size: float | Decimal | int, decimals: int = 8) -> int:
@@ -64,19 +94,7 @@ def size_to_uint64(size: float | Decimal | int, decimals: int = 8) -> int:
     Raises:
         ValidationError: If size is invalid
     """
-    if size < 0:
-        raise ValidationError("Size cannot be negative", field="size", value=size)
-
-    if isinstance(size, float | int):
-        size = Decimal(str(size))
-
-    multiplier = Decimal(10**decimals)
-    uint_size = int(size * multiplier)
-
-    if uint_size > 2**64 - 1:
-        raise ValidationError("Size exceeds uint64 maximum", field="size", value=size)
-
-    return uint_size
+    return to_uint64(size, decimals, "size")
 
 
 def uint64_to_size(uint_size: int, decimals: int = 8) -> Decimal:
@@ -89,8 +107,7 @@ def uint64_to_size(uint_size: int, decimals: int = 8) -> Decimal:
     Returns:
         Size as Decimal
     """
-    divisor = Decimal(10**decimals)
-    return Decimal(uint_size) / divisor
+    return from_uint64(uint_size, decimals)
 
 
 def encode_tif(tif: str) -> int:

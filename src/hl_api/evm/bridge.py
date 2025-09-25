@@ -77,9 +77,7 @@ class CCTPBridge:
                 error=str(exc),
                 raw_response={
                     "direction": "mainnet_to_hyper",
-                    "field": getattr(exc, "field", None),
-                    "value": getattr(exc, "value", None),
-                    "details": getattr(exc, "details", None),
+                    "error_details": getattr(exc, "details", {}),
                 },
             )
 
@@ -112,9 +110,7 @@ class CCTPBridge:
                 error=str(exc),
                 raw_response={
                     "direction": "hyper_to_mainnet",
-                    "field": getattr(exc, "field", None),
-                    "value": getattr(exc, "value", None),
-                    "details": getattr(exc, "details", None),
+                    "error_details": getattr(exc, "details", {}),
                 },
             )
 
@@ -157,16 +153,16 @@ class CCTPBridge:
         try:
             amount_units, amount_decimal, truncated = self._normalise_usdc_amount(amount)
         except ValidationError as exc:
-            return self._bridge_failure(
-                direction=direction,
+            logger.debug("Stage CCTP [%s]: bridge aborted (reason=%s)", direction, str(exc))
+            return BridgeResponse(
+                success=False,
                 error=str(exc),
-                amount=None,
-                raw=self._with_context(
-                    raw_context,
-                    field=exc.field,
-                    value=exc.value,
-                    details=exc.details,
-                ),
+                raw_response={
+                    **raw_context,
+                    "field": exc.field,
+                    "value": exc.value,
+                    "details": exc.details,
+                },
             )
 
         if truncated:
@@ -176,14 +172,22 @@ class CCTPBridge:
 
         amount_float = float(amount_decimal)
         raw_context["amount_units"] = amount_units
-        self._stage(direction, "prepare amount", amount=f"{amount_float:.6f}", units=amount_units)
+        logger.debug(
+            "Stage CCTP [%s]: prepare amount (amount=%.6f, units=%s)",
+            direction,
+            amount_float,
+            amount_units,
+        )
 
         if max_fee_override is not None and max_fee_override < 0:
-            return self._bridge_failure(
-                direction=direction,
-                error="max_fee must be non-negative",
+            logger.debug(
+                "Stage CCTP [%s]: bridge aborted (reason=max_fee must be non-negative)", direction
+            )
+            return BridgeResponse(
+                success=False,
                 amount=amount_float,
-                raw=self._with_context(raw_context, max_fee=max_fee_override),
+                error="max_fee must be non-negative",
+                raw_response={**raw_context, "max_fee": max_fee_override},
             )
 
         finality_threshold = (
@@ -193,14 +197,23 @@ class CCTPBridge:
         )
         raw_context["finality_threshold"] = finality_threshold
         if finality_threshold <= 0:
-            return self._bridge_failure(
-                direction=direction,
-                error="Finality threshold must be positive",
+            logger.debug(
+                "Stage CCTP [%s]: bridge aborted (reason=Finality threshold must be positive)",
+                direction,
+            )
+            return BridgeResponse(
+                success=False,
                 amount=amount_float,
-                raw=raw_context,
+                error="Finality threshold must be positive",
+                raw_response=raw_context,
             )
 
-        self._stage(direction, "fetch fee quote", source=source_domain, dest=destination_domain)
+        logger.debug(
+            "Stage CCTP [%s]: fetch fee quote (source=%s, dest=%s)",
+            direction,
+            source_domain,
+            destination_domain,
+        )
         try:
             max_fee = (
                 max_fee_override
@@ -208,38 +221,49 @@ class CCTPBridge:
                 else self._fetch_cctp_fee(amount_units, source_domain, destination_domain)
             )
         except ValidationError as exc:
-            return self._bridge_failure(
-                direction=direction,
-                error=str(exc),
+            logger.debug("Stage CCTP [%s]: bridge aborted (reason=%s)", direction, str(exc))
+            return BridgeResponse(
+                success=False,
                 amount=amount_float,
-                raw=self._with_context(
-                    raw_context,
-                    field=exc.field,
-                    value=exc.value,
-                    details=exc.details,
-                ),
+                error=str(exc),
+                raw_response={
+                    **raw_context,
+                    "field": exc.field,
+                    "value": exc.value,
+                    "details": exc.details,
+                },
             )
         except requests.RequestException as exc:
             logger.error("Failed to fetch CCTP fee quote: %s", exc)
-            return self._bridge_failure(
-                direction=direction,
-                error=f"Failed to fetch CCTP fee quote: {exc}",
+            logger.debug(
+                "Stage CCTP [%s]: bridge aborted (reason=%s)",
+                direction,
+                f"Failed to fetch CCTP fee quote: {exc}",
+            )
+            return BridgeResponse(
+                success=False,
                 amount=amount_float,
-                raw=raw_context,
+                error=f"Failed to fetch CCTP fee quote: {exc}",
+                raw_response=raw_context,
             )
 
         raw_context["max_fee"] = max_fee
         if max_fee >= amount_units:
-            return self._bridge_failure(
-                direction=direction,
-                error="Quoted max fee exceeds or equals bridge amount",
+            logger.debug(
+                "Stage CCTP [%s]: bridge aborted (reason=%s)",
+                direction,
+                "Quoted max fee exceeds or equals bridge amount",
+            )
+            return BridgeResponse(
+                success=False,
                 amount=amount_float,
-                raw=raw_context,
+                error="Quoted max fee exceeds or equals bridge amount",
+                raw_response=raw_context,
             )
 
         payloads = self._resolve_cctp_verification_payloads(direction, amount_units)
 
-        self._stage(direction, "submit burn transaction")
+        logger.debug("Stage CCTP [%s]: submit burn transaction", direction)
         try:
             burn_tx = source_contract.functions.bridgeUSDCViaCCTPv2(
                 amount_units,
@@ -249,15 +273,16 @@ class CCTPBridge:
             ).transact()
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception("Failed to submit CCTP burn on %s", direction)
-            return self._bridge_failure(
-                direction=direction,
-                error=str(exc),
+            logger.debug("Stage CCTP [%s]: bridge aborted (reason=%s)", direction, str(exc))
+            return BridgeResponse(
+                success=False,
                 amount=amount_float,
-                raw=raw_context,
+                error=str(exc),
+                raw_response=raw_context,
             )
 
         burn_tx_hash = burn_tx.to_0x_hex()
-        self._stage(direction, "burn submitted", tx=burn_tx_hash)
+        logger.debug("Stage CCTP [%s]: burn submitted (tx=%s)", direction, burn_tx_hash)
         burn_receipt = (
             source_web3.eth.wait_for_transaction_receipt(burn_tx, timeout=self._receipt_timeout)
             if self._wait_for_receipt
@@ -273,47 +298,50 @@ class CCTPBridge:
             )
         except TimeoutError as exc:
             logger.error("IRIS attestation timed out for %s", direction)
-            return self._bridge_failure(
-                direction=direction,
-                error=str(exc),
+            logger.debug("Stage CCTP [%s]: bridge aborted (reason=%s)", direction, str(exc))
+            return BridgeResponse(
+                success=False,
                 amount=amount_float,
                 burn_tx_hash=burn_tx_hash,
-                raw=raw_context,
+                error=str(exc),
+                raw_response=raw_context,
             )
         except ValidationError as exc:
             logger.error("IRIS attestation failed for %s: %s", direction, exc)
-            return self._bridge_failure(
-                direction=direction,
-                error=str(exc),
+            logger.debug("Stage CCTP [%s]: bridge aborted (reason=%s)", direction, str(exc))
+            return BridgeResponse(
+                success=False,
                 amount=amount_float,
                 burn_tx_hash=burn_tx_hash,
-                raw=self._with_context(
-                    raw_context,
-                    field=exc.field,
-                    value=exc.value,
-                    details=exc.details,
-                ),
+                error=str(exc),
+                raw_response={
+                    **raw_context,
+                    "field": exc.field,
+                    "value": exc.value,
+                    "details": exc.details,
+                },
             )
 
-        self._stage(direction, "submit claim transaction")
+        logger.debug("Stage CCTP [%s]: submit claim transaction", direction)
         try:
             claim_tx = destination_contract.functions.receiveUSDCViaCCTPv2(
                 message, attestation
             ).transact()
         except Exception as exc:  # pragma: no cover - defensive
             logger.exception("Failed to submit CCTP claim on %s", direction)
-            return self._bridge_failure(
-                direction=direction,
-                error=str(exc),
+            logger.debug("Stage CCTP [%s]: bridge aborted (reason=%s)", direction, str(exc))
+            return BridgeResponse(
+                success=False,
                 amount=amount_float,
                 burn_tx_hash=burn_tx_hash,
                 message=message,
                 attestation=attestation,
-                raw=raw_context,
+                error=str(exc),
+                raw_response=raw_context,
             )
 
         claim_tx_hash = claim_tx.to_0x_hex()
-        self._stage(direction, "claim submitted", tx=claim_tx_hash)
+        logger.debug("Stage CCTP [%s]: claim submitted (tx=%s)", direction, claim_tx_hash)
         claim_receipt = (
             destination_web3.eth.wait_for_transaction_receipt(
                 claim_tx, timeout=self._receipt_timeout
@@ -325,15 +353,20 @@ class CCTPBridge:
         if claim_receipt_data is not None:
             raw_context["claim_receipt"] = claim_receipt_data
 
-        self._stage(direction, "bridge complete", burn_tx=burn_tx_hash, claim_tx=claim_tx_hash)
-        return self._bridge_success(
-            direction=direction,
+        logger.debug(
+            "Stage CCTP [%s]: bridge complete (burn_tx=%s, claim_tx=%s)",
+            direction,
+            burn_tx_hash,
+            claim_tx_hash,
+        )
+        return BridgeResponse(
+            success=True,
             amount=float(Decimal(amount_units) / USDC_SCALING),
             burn_tx_hash=burn_tx_hash,
             claim_tx_hash=claim_tx_hash,
             message=message,
             attestation=attestation,
-            raw=raw_context,
+            raw_response=raw_context,
         )
 
     # ------------------------------------------------------------------
@@ -438,13 +471,13 @@ class CCTPBridge:
 
     def _poll_iris_attestation(self, direction: str, domain: int, tx_hash: str) -> tuple[str, str]:
         url = f"{self._iris_base_url}/v2/messages/{domain}?transactionHash={tx_hash}"
-        self._stage(
+        logger.debug(
+            "Stage CCTP [%s]: poll IRIS (domain=%s, tx=%s, max_polls=%s, interval=%s)",
             direction,
-            "poll IRIS",
-            domain=domain,
-            tx=tx_hash,
-            max_polls=self._iris_max_polls,
-            interval=self._iris_poll_interval,
+            domain,
+            tx_hash,
+            self._iris_max_polls,
+            self._iris_poll_interval,
         )
 
         for attempt in range(self._iris_max_polls):
@@ -505,62 +538,3 @@ class CCTPBridge:
                 if isinstance(nested, list):
                     return [entry for entry in nested if isinstance(entry, Mapping)]
         return []
-
-    @staticmethod
-    def _with_context(base: Mapping[str, Any], **updates: Any) -> dict[str, Any]:
-        context = dict(base)
-        context.update({k: v for k, v in updates.items() if v is not None})
-        return context
-
-    def _stage(self, direction: str, message: str, **details: Any) -> None:
-        suffix = ""
-        if details:
-            formatted = ", ".join(f"{key}={value}" for key, value in details.items())
-            suffix = f" ({formatted})"
-        logger.debug("Stage CCTP [%s]: %s%s", direction, message, suffix)
-
-    def _bridge_failure(
-        self,
-        *,
-        direction: str,
-        error: str,
-        amount: float | None,
-        raw: Mapping[str, Any],
-        burn_tx_hash: str | None = None,
-        message: str | None = None,
-        attestation: str | None = None,
-    ) -> BridgeResponse:
-        self._stage(direction, "bridge aborted", reason=error)
-        context = dict(raw)
-        return BridgeResponse(
-            success=False,
-            amount=amount,
-            burn_tx_hash=burn_tx_hash,
-            claim_tx_hash=None,
-            message=message,
-            attestation=attestation,
-            error=error,
-            raw_response=context,
-        )
-
-    def _bridge_success(
-        self,
-        *,
-        direction: str,
-        amount: float,
-        burn_tx_hash: str,
-        claim_tx_hash: str,
-        message: str,
-        attestation: str,
-        raw: Mapping[str, Any],
-    ) -> BridgeResponse:
-        context = dict(raw)
-        return BridgeResponse(
-            success=True,
-            amount=amount,
-            burn_tx_hash=burn_tx_hash,
-            claim_tx_hash=claim_tx_hash,
-            message=message,
-            attestation=attestation,
-            raw_response=context,
-        )

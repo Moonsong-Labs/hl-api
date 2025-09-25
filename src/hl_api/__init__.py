@@ -10,10 +10,8 @@ from .evm import HLProtocolEVM
 from .exceptions import (
     AuthenticationError,
     HLProtocolError,
+    MethodNotImplementedError,
     NetworkError,
-    NotImplementedError,
-    OrderError,
-    TransferError,
     ValidationError,
 )
 from .types import (
@@ -73,11 +71,9 @@ __all__ = [
     # Exceptions
     "HLProtocolError",
     "AuthenticationError",
-    "OrderError",
-    "TransferError",
     "NetworkError",
     "ValidationError",
-    "NotImplementedError",
+    "MethodNotImplementedError",
     # Utility functions
     "price_to_uint64",
     "uint64_to_price",
