@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import Any
 
 from eth_typing import HexStr
@@ -34,6 +34,13 @@ class TIF(IntEnum):
     IOC = 3  # Immediate Or Cancel
 
 
+class BridgeDirection(Enum):
+    """Bridge direction for CCTP operations."""
+
+    MAINNET_TO_HYPER = "mainnet_to_hyper"
+    HYPER_TO_MAINNET = "hyper_to_mainnet"
+
+
 @dataclass
 class Response:
     """Generic response for all protocol operations."""
@@ -57,18 +64,6 @@ class Response:
     claim_tx_hash: str | None = None
     message: str | None = None
     attestation: str | None = None
-
-
-OrderResponse = Response
-CancelResponse = Response
-TransferResponse = Response
-DelegateResponse = Response
-StakingResponse = Response
-SendResponse = Response
-FinalizeResponse = Response
-WalletResponse = Response
-ApprovalResponse = Response
-BridgeResponse = Response
 
 
 Price = int | float  # Will be converted to uint64 internally

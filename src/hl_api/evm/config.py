@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -42,11 +42,11 @@ class EVMClientConfig:
     mainnet_domain: int | None = None
     cctp_finality_threshold: int = DEFAULT_CCTP_FINALITY_THRESHOLD
 
-    flexible_vault_proof_url: str = DEFAULT_FLEXIBLE_VAULT_PROOF_URL
+    flexible_vault_proof_url: str | Sequence[str] = DEFAULT_FLEXIBLE_VAULT_PROOF_URL
     flexible_vault_verifier_address: str | None = None
     flexible_vault_verifier_network: str = "hyper"
     flexible_vault_check_merkle_root: bool = False
-    flexible_vault_proof_blob: Mapping[str, Any] | None = None
+    flexible_vault_proof_blob: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None
 
     info_url: str | None = None
     iris_base_url: str | None = None

@@ -2,12 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from .types import (
-    CancelResponse,
-    OrderResponse,
-    SendResponse,
-    TransferResponse,
-)
+from .types import Response
 
 
 class HLProtocolBase(ABC):
@@ -25,7 +20,7 @@ class HLProtocolBase(ABC):
         sz: float,
         slippage: float = 0.05,
         cloid: str | None = None,
-    ) -> OrderResponse:
+    ) -> Response:
         pass
 
     @abstractmethod
@@ -35,7 +30,7 @@ class HLProtocolBase(ABC):
         size: float | None = None,
         slippage: float = 0.005,
         cloid: str | None = None,
-    ) -> OrderResponse:
+    ) -> Response:
         pass
 
     @abstractmethod
@@ -48,37 +43,35 @@ class HLProtocolBase(ABC):
         reduce_only: bool = False,
         tif: str = "GTC",
         cloid: str | None = None,
-    ) -> OrderResponse:
+    ) -> Response:
         pass
 
     @abstractmethod
-    def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> TransferResponse:
+    def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> Response:
         pass
 
     @abstractmethod
-    def spot_send(
-        self, recipient: str, token: str, amount: float, destination: str
-    ) -> SendResponse:
+    def spot_send(self, recipient: str, token: str, amount: float, destination: str) -> Response:
         pass
 
     @abstractmethod
-    def perp_send(self, recipient: str, amount: float, destination: str) -> SendResponse:
+    def perp_send(self, recipient: str, amount: float, destination: str) -> Response:
         pass
 
     @abstractmethod
-    def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
+    def usd_class_transfer_to_perp(self, amount: float) -> Response:
         pass
 
     @abstractmethod
-    def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
+    def usd_class_transfer_to_spot(self, amount: float) -> Response:
         pass
 
     @abstractmethod
-    def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
+    def cancel_order_by_oid(self, asset: str, order_id: int) -> Response:
         pass
 
     @abstractmethod
-    def cancel_order_by_cloid(self, asset: str, cloid: str) -> CancelResponse:
+    def cancel_order_by_cloid(self, asset: str, cloid: str) -> Response:
         pass
 
     @abstractmethod

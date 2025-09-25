@@ -130,7 +130,7 @@ def test_resolver_loads_payload(monkeypatch: pytest.MonkeyPatch) -> None:
         request_timeout=1.0,
     )
 
-    payload = resolver.resolve("any_action")
+    payload = resolver.resolve("any_action", "ethereum:tqETH:subvault0")
     assert payload.verification_type == 3
     assert payload.verification_data == "0x01"
     assert payload.as_tuple()[1] == bytes.fromhex("01")
@@ -164,4 +164,4 @@ def test_resolver_missing_description_raises(monkeypatch: pytest.MonkeyPatch) ->
     )
 
     with pytest.raises(ValidationError):
-        resolver.resolve("special_action")
+        resolver.resolve("special_action", "ethereum:tqETH:subvault0")

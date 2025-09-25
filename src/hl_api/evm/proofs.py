@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -48,75 +48,130 @@ class ProofManager:
         self._cache: dict[str, ProofDataset] = {}
         self._validated_roots: set[str] = set()
 
-    def fetch(self, config: EVMClientConfig) -> ProofDataset:
+    def fetch(self, config: EVMClientConfig) -> dict[str, ProofDataset]:
+        """Fetch and return multiple proof datasets indexed by title."""
+        datasets: dict[str, ProofDataset] = {}
+
+        # Handle inline blobs
         blob = config.flexible_vault_proof_blob
         if blob is not None:
-            if not isinstance(blob, Mapping):
+            # Normalize to sequence
+            blobs: Sequence[Mapping[str, Any]]
+            if isinstance(blob, Sequence) and not isinstance(blob, (str, bytes)):
+                blobs = blob
+            elif isinstance(blob, Mapping):
+                blobs = [blob]
+            else:
                 raise ValidationError(
-                    "Flexible vault proof blob must be a mapping",
+                    "Flexible vault proof blob must be a mapping or sequence of mappings",
                     field="proof_blob",
                     value=blob,
                 )
 
-            source_label = config.flexible_vault_proof_url or "<inline>"
-            if source_label == "<inline>":
-                logger.debug("Loading flexible vault proof set from inline blob")
-            else:
-                logger.debug(
-                    "Loading flexible vault proof set from inline blob via %s",
-                    source_label,
-                )
-            dataset = _build_dataset(blob, source_label=source_label)
-            if config.flexible_vault_proof_url:
-                self._cache.setdefault(config.flexible_vault_proof_url, dataset)
-            return dataset
+            for i, single_blob in enumerate(blobs):
+                if not isinstance(single_blob, Mapping):
+                    raise ValidationError(
+                        f"Proof blob at index {i} must be a mapping",
+                        field="proof_blob",
+                        value=single_blob,
+                    )
 
+                source_label = f"<inline-{i}>"
+                logger.debug("Loading flexible vault proof set from inline blob %d", i)
+                dataset = _build_dataset(single_blob, source_label=source_label)
+
+                if dataset.title in datasets:
+                    raise ValidationError(
+                        f"Duplicate proof dataset title: {dataset.title}",
+                        field="title",
+                        value=dataset.title,
+                        details={"source": source_label},
+                    )
+                datasets[dataset.title] = dataset
+
+        # Handle URLs
         url = config.flexible_vault_proof_url
-        if not url:
-            raise ValidationError(
-                "Flexible vault proof URL is required when no blob is provided",
-                field="proof_url",
-                value=url,
-            )
-
-        cached = self._cache.get(url)
-        if cached is not None:
-            return cached
-
-        logger.debug("Fetching flexible vault proof set from %s", url)
-        try:
-            response = self._session.get(url, timeout=self._request_timeout, allow_redirects=False)
-            response.raise_for_status()
-            if 300 <= response.status_code < 400:
+        if url:
+            # Normalize to sequence
+            urls: Sequence[str]
+            if isinstance(url, str):
+                urls = [url]
+            elif isinstance(url, Sequence):
+                urls = url
+            else:
                 raise ValidationError(
-                    "Proof source responded with a redirect",
-                    field="url",
+                    "Flexible vault proof URL must be a string or sequence of strings",
+                    field="proof_url",
                     value=url,
-                    details={
-                        "status": response.status_code,
-                        "location": response.headers.get("Location"),
-                    },
                 )
-        except requests.RequestException as exc:  # pragma: no cover - network failure
-            raise NetworkError(
-                f"Failed to fetch verification proof set from {url}",
-                endpoint=url,
-                status_code=getattr(exc.response, "status_code", None),
-                details={"error": str(exc)},
-            ) from exc
 
-        payload = response.json()
-        if not isinstance(payload, Mapping):
+            for single_url in urls:
+                # Check cache first
+                cached = self._cache.get(single_url)
+                if cached is not None:
+                    if cached.title in datasets:
+                        raise ValidationError(
+                            f"Duplicate proof dataset title: {cached.title}",
+                            field="title",
+                            value=cached.title,
+                            details={"url": single_url},
+                        )
+                    datasets[cached.title] = cached
+                    continue
+
+                logger.debug("Fetching flexible vault proof set from %s", single_url)
+                try:
+                    response = self._session.get(
+                        single_url, timeout=self._request_timeout, allow_redirects=False
+                    )
+                    response.raise_for_status()
+                    if 300 <= response.status_code < 400:
+                        raise ValidationError(
+                            "Proof source responded with a redirect",
+                            field="url",
+                            value=single_url,
+                            details={
+                                "status": response.status_code,
+                                "location": response.headers.get("Location"),
+                            },
+                        )
+                except requests.RequestException as exc:  # pragma: no cover - network failure
+                    raise NetworkError(
+                        f"Failed to fetch verification proof set from {single_url}",
+                        endpoint=single_url,
+                        status_code=getattr(exc.response, "status_code", None),
+                        details={"error": str(exc)},
+                    ) from exc
+
+                payload = response.json()
+                if not isinstance(payload, Mapping):
+                    raise ValidationError(
+                        "Proof payload is not a JSON object",
+                        field="payload",
+                        value=payload,
+                        details={"url": single_url},
+                    )
+
+                dataset = _build_dataset(payload, source_label=single_url)
+                self._cache[single_url] = dataset
+
+                if dataset.title in datasets:
+                    raise ValidationError(
+                        f"Duplicate proof dataset title: {dataset.title}",
+                        field="title",
+                        value=dataset.title,
+                        details={"url": single_url},
+                    )
+                datasets[dataset.title] = dataset
+
+        if not datasets:
             raise ValidationError(
-                "Proof payload is not a JSON object",
-                field="payload",
-                value=payload,
-                details={"url": url},
+                "No proof datasets provided via blob or URL",
+                field="flexible_vault",
+                value=None,
             )
 
-        dataset = _build_dataset(payload, source_label=url)
-        self._cache[url] = dataset
-        return dataset
+        return datasets
 
     def ensure_merkle_root(
         self, config: EVMClientConfig, dataset: ProofDataset, connections: Web3Connections
@@ -199,12 +254,15 @@ class FlexibleVaultProofResolver:
         self._config = config
         self._connections = connections
         self._manager = proof_manager or ProofManager(session, request_timeout=request_timeout)
-        self._dataset = self._manager.fetch(config)
-        self._manager.ensure_merkle_root(config, self._dataset, connections)
+        self._datasets = self._manager.fetch(config)
+        # Validate merkle roots for all datasets
+        for dataset in self._datasets.values():
+            self._manager.ensure_merkle_root(config, dataset, connections)
 
     def resolve(
         self,
         description: str,
+        json_name: str,
         _context: Mapping[str, Any] | None = None,
     ) -> VerificationPayload:
         if not self._config:
@@ -212,26 +270,39 @@ class FlexibleVaultProofResolver:
                 "Flexible vault proofs are not configured", field="flexible_vault"
             )
 
-        logger.debug(
-            "Resolving flexible vault proof for description '%s'",
-            description,
-        )
-        payload = self._dataset.payloads.get(description)
-        if payload is None:
-            available_payloads = sorted(self._dataset.payloads.keys())
-            logger.warning("Proofs available: %s", available_payloads)
+        # Find dataset by json_name (which matches title)
+        dataset = self._datasets.get(json_name)
+        if dataset is None:
+            available_titles = sorted(self._datasets.keys())
             raise ValidationError(
-                f"No proofs available for configured description {description} in {available_payloads}",
+                f"No proof dataset found with title '{json_name}'",
+                field="json_name",
+                value=json_name,
+                details={"available_titles": available_titles},
+            )
+
+        logger.debug(
+            "Resolving flexible vault proof for description '%s' from dataset '%s'",
+            description,
+            json_name,
+        )
+        payload = dataset.payloads.get(description)
+        if payload is None:
+            available_payloads = sorted(dataset.payloads.keys())
+            logger.warning("Proofs available in dataset '%s': %s", json_name, available_payloads)
+            raise ValidationError(
+                f"No proofs available for description '{description}' in dataset '{json_name}'",
                 field="description",
                 value=description,
-                details={"available": sorted(self._dataset.payloads.keys())},
+                details={"available": available_payloads, "dataset": json_name},
             )
 
         result = VerificationPayload.from_dict(dict(payload))
         logger.debug(
-            "Flexible vault proof for description '%s' uses '%s' (url=%s, proof=%s)",
+            "Flexible vault proof for description '%s' from dataset '%s' (url=%s, proof=%s)",
             description,
-            self._dataset.url,
+            json_name,
+            dataset.url,
             _preview_proof(result),
         )
         return result

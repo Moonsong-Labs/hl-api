@@ -11,7 +11,7 @@ import json
 from dotenv import load_dotenv
 
 from hl_api import HLProtocolEVM
-from hl_api.types import BridgeResponse
+from hl_api.types import Response
 
 load_dotenv()
 
@@ -32,7 +32,7 @@ def _require_env(name: str) -> str:
     return value
 
 
-def _log_bridge_result(label: str, response: BridgeResponse) -> None:
+def _log_bridge_result(label: str, response: Response) -> None:
     context: dict[str, Any] = response.raw_response or {}
     if response.success:
         logger.info("%s succeeded (amount %.6f USDC)", label, response.amount or 0.0)

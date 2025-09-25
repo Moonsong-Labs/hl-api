@@ -11,7 +11,7 @@ from hl_api.evm.bridge import CCTPBridge
 from hl_api.evm.config import EVMClientConfig
 from hl_api.evm.connections import Web3Connections
 from hl_api.exceptions import ValidationError
-from hl_api.types import VerificationPayload
+from hl_api.types import BridgeDirection, VerificationPayload
 
 if TYPE_CHECKING:  # pragma: no cover - typing helper
     from hl_api.evm.proofs import FlexibleVaultProofResolver
@@ -28,7 +28,7 @@ class DummyResolver:
         self._payloads = payloads
         self.calls: list[tuple[str, Any]] = []
 
-    def resolve(self, description: str, context: Any) -> VerificationPayload:
+    def resolve(self, description: str, json_name: str, context: Any) -> VerificationPayload:
         self.calls.append((description, context))
         payload = self._payloads.get(description)
         if payload is None:
@@ -37,7 +37,7 @@ class DummyResolver:
 
 
 class FailingResolver:
-    def resolve(self, description: str, context: Any) -> VerificationPayload:  # type: ignore[override]
+    def resolve(self, description: str, json_name: str, context: Any) -> VerificationPayload:  # type: ignore[override]
         raise ValidationError(
             "boom", field="description", value=description, details={"ctx": context}
         )
@@ -81,7 +81,7 @@ def test_verification_disabled_skips_resolver() -> None:
     resolver = DummyResolver(payloads)
     bridge = _bridge_instance(resolver=resolver, disable_call_verification=True)
 
-    payload_tuples = bridge._resolve_cctp_verification_payloads("mainnet_to_hyper", 1)
+    payload_tuples = bridge._resolve_cctp_verification_payloads(BridgeDirection.MAINNET_TO_HYPER, 1)
 
     assert len(payload_tuples) == len(_BRIDGE_DESCRIPTIONS)
     assert resolver.calls == []
@@ -101,13 +101,15 @@ def test_verification_fetches_payloads_when_enabled() -> None:
     resolver = DummyResolver(payloads)
     bridge = _bridge_instance(resolver=resolver, disable_call_verification=False)
 
-    payload_tuples = bridge._resolve_cctp_verification_payloads("mainnet_to_hyper", 25)
+    payload_tuples = bridge._resolve_cctp_verification_payloads(
+        BridgeDirection.MAINNET_TO_HYPER, 25
+    )
 
     assert [entry[0] for entry in payload_tuples] == [1, 2]
     assert len(resolver.calls) == len(_BRIDGE_DESCRIPTIONS)
     for (description, context), expected in zip(resolver.calls, _BRIDGE_DESCRIPTIONS):
         assert description == expected
-        assert context["direction"] == "mainnet_to_hyper"
+        assert context["direction"] == BridgeDirection.MAINNET_TO_HYPER.value
         assert context["amount_units"] == 25
 
 
@@ -116,7 +118,7 @@ def test_verification_error_wraps_details() -> None:
     bridge = _bridge_instance(resolver=resolver, disable_call_verification=False)
 
     with pytest.raises(ValidationError) as excinfo:
-        bridge._resolve_cctp_verification_payloads("mainnet_to_hyper", 10)
+        bridge._resolve_cctp_verification_payloads(BridgeDirection.MAINNET_TO_HYPER, 10)
 
     err = excinfo.value
     assert err.value == _BRIDGE_DESCRIPTIONS[0]
