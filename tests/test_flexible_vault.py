@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
+from requests import Session
 
 from hl_api.evm.config import FlexibleVaultConfig
 from hl_api.evm.proofs import FlexibleVaultProofResolver, ProofManager
+from hl_api.evm.connections import Web3Connections
 from hl_api.exceptions import ValidationError
 
 
@@ -26,12 +28,13 @@ class DummyResponse:
         return self._payload
 
 
-class DummySession:
+class DummySession(Session):
     def __init__(self, response: DummyResponse) -> None:
+        super().__init__()
         self._response = response
         self.calls: list[tuple[str, float, bool]] = []
 
-    def get(self, url: str, timeout: float, allow_redirects: bool) -> DummyResponse:
+    def get(self, url: str, timeout: float, allow_redirects: bool) -> DummyResponse:  # type: ignore[override]
         self.calls.append((url, timeout, allow_redirects))
         return self._response
 
@@ -92,9 +95,12 @@ def test_resolver_loads_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = _example_payload()
     session = DummySession(DummyResponse(payload))
     merkle_root = bytes.fromhex(payload["merkle_root"][2:])
-    connections = SimpleNamespace(
-        hyperliquid_web3=DummyWeb3(merkle_root),
-        mainnet_web3=DummyWeb3(merkle_root),
+    connections = cast(
+        Web3Connections,
+        SimpleNamespace(
+            hyperliquid_web3=DummyWeb3(merkle_root),
+            mainnet_web3=DummyWeb3(merkle_root),
+        ),
     )
 
     config = FlexibleVaultConfig(
@@ -120,9 +126,12 @@ def test_resolver_loads_payload(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_resolver_missing_description_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     payload = _example_payload()
     session = DummySession(DummyResponse(payload))
-    connections = SimpleNamespace(
-        hyperliquid_web3=DummyWeb3(bytes.fromhex(payload["merkle_root"][2:])),
-        mainnet_web3=DummyWeb3(bytes.fromhex(payload["merkle_root"][2:])),
+    connections = cast(
+        Web3Connections,
+        SimpleNamespace(
+            hyperliquid_web3=DummyWeb3(bytes.fromhex(payload["merkle_root"][2:])),
+            mainnet_web3=DummyWeb3(bytes.fromhex(payload["merkle_root"][2:])),
+        ),
     )
 
     config = FlexibleVaultConfig(
