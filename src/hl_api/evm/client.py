@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
@@ -15,12 +16,12 @@ from web3.types import ChecksumAddress
 
 from ..base import HLProtocolBase
 from ..constants import Precompile
-from ..evm_utils import transaction_method
 from ..exceptions import NetworkError, ValidationError
 from ..types import (
     BridgeResponse,
     CancelResponse,
     OrderResponse,
+    Response,
     SendResponse,
     TransferResponse,
     VerificationPayload,
@@ -46,6 +47,18 @@ from .proofs import FlexibleVaultProofResolver
 from .transactions import TransactionDispatcher
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TxRequest:
+    """Transaction request details for clean separation of concerns."""
+
+    function: str
+    args: list[Any]
+    action: str = ""
+    context: dict[str, Any] = field(default_factory=dict)
+    response_class: type[Response] = Response
+    response_fields: dict[str, Any] = field(default_factory=dict)
 
 
 class HLProtocolEVM(HLProtocolBase):
@@ -173,6 +186,47 @@ class HLProtocolEVM(HLProtocolBase):
     def _ensure_connected(self) -> None:
         self._connections.ensure_connected()
 
+    def _execute_transaction(self, tx_request: TxRequest, func_name: str) -> Response:
+        """Execute a transaction and return the appropriate response."""
+        try:
+            self._ensure_connected()
+
+            tx_result = self._send_contract_transaction(
+                tx_request.function,
+                tx_request.args,
+                action=tx_request.action or func_name,
+                context=tx_request.context,
+            )
+
+            receipt = tx_result.get("receipt")
+            status = bool(receipt is None or receipt.get("status", 0) == 1)
+
+            response_data: dict[str, Any] = {
+                "success": status,
+                "transaction_hash": tx_result["tx_hash"],
+                "error": None if status else tx_result.get("error", "Transaction reverted"),
+                "raw_response": tx_result,
+            }
+
+            for key, value in tx_request.response_fields.items():
+                response_data[key] = value
+
+            return tx_request.response_class(**response_data)
+
+        except (ValidationError, NetworkError) as exc:
+            return tx_request.response_class(
+                success=False,
+                error=str(exc),
+                **{
+                    k: v
+                    for k, v in tx_request.response_fields.items()
+                    if k not in ["success", "error"]
+                },
+            )
+        except Exception as exc:
+            logger.exception(f"Unexpected {func_name} failure")
+            return tx_request.response_class(success=False, error=str(exc))
+
     # ------------------------------------------------------------------
     # Core actions
     # ------------------------------------------------------------------
@@ -294,7 +348,6 @@ class HLProtocolEVM(HLProtocolBase):
             cloid=cloid,
         )
 
-    @transaction_method("limit_order", OrderResponse)
     def limit_order(
         self,
         asset: str,
@@ -332,9 +385,16 @@ class HLProtocolEVM(HLProtocolBase):
             payload.as_tuple(),
         ]
 
-        return fn_name, args, context, {"order_id": None, "cloid": cloid}  # type: ignore[return-value]
+        tx_request = TxRequest(
+            function=fn_name,
+            args=args,
+            action="limit_order",
+            context=context,
+            response_class=OrderResponse,
+            response_fields={"order_id": None, "cloid": cloid},
+        )
+        return self._execute_transaction(tx_request, "limit_order")
 
-    @transaction_method("cancel_order_by_oid", CancelResponse)
     def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
         asset_id = self._resolve_asset_id(asset)
         oid = int(order_id)
@@ -344,9 +404,16 @@ class HLProtocolEVM(HLProtocolBase):
         )
         args = [asset_id, oid, payload.as_tuple()]
 
-        return "cancelOrderByOid", args, context, {"cancelled_orders": 1}  # type: ignore[return-value]
+        tx_request = TxRequest(
+            function="cancelOrderByOid",
+            args=args,
+            action="cancel_order_by_oid",
+            context=context,
+            response_class=CancelResponse,
+            response_fields={"cancelled_orders": 1},
+        )
+        return self._execute_transaction(tx_request, "cancel_order_by_oid")
 
-    @transaction_method("cancel_order_by_cloid", CancelResponse)
     def cancel_order_by_cloid(self, asset: str, cloid: str) -> CancelResponse:
         asset_id = self._resolve_asset_id(asset)
         cloid_uint = cloid_to_uint128(cloid)
@@ -356,7 +423,15 @@ class HLProtocolEVM(HLProtocolBase):
         )
         args = [asset_id, cloid_uint, payload.as_tuple()]
 
-        return "cancelOrderByCloid", args, context, {"cancelled_orders": 1}  # type: ignore[return-value]
+        tx_request = TxRequest(
+            function="cancelOrderByCloid",
+            args=args,
+            action="cancel_order_by_cloid",
+            context=context,
+            response_class=CancelResponse,
+            response_fields={"cancelled_orders": 1},
+        )
+        return self._execute_transaction(tx_request, "cancel_order_by_cloid")
 
     def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> TransferResponse:
         message = (
@@ -366,7 +441,6 @@ class HLProtocolEVM(HLProtocolBase):
         logger.warning("vault_transfer not supported for vault %s", vault)
         return TransferResponse(success=False, amount=None, error=message)
 
-    @transaction_method("spot_send", SendResponse)
     def spot_send(
         self, recipient: str, token: str, amount: float, destination: str
     ) -> SendResponse:
@@ -380,11 +454,19 @@ class HLProtocolEVM(HLProtocolBase):
             args = [amount_uint, payload.as_tuple()]
             fn_name = "withdrawHypeToEvm"
         else:
-            token_index = self._resolve_token_index(token)
+            token_index = self._metadata.resolve_token_index(token)
             args = [token_index, amount_uint, payload.as_tuple()]
             fn_name = "withdrawTokenToEvm"
 
-        return fn_name, args, context, {"recipient": recipient, "amount": amount}  # type: ignore[return-value]
+        tx_request = TxRequest(
+            function=fn_name,
+            args=args,
+            action="spot_send",
+            context=context,
+            response_class=SendResponse,
+            response_fields={"recipient": recipient, "amount": amount},
+        )
+        return self._execute_transaction(tx_request, "spot_send")
 
     def perp_send(self, recipient: str, amount: float, destination: str) -> SendResponse:
         message = "Perp collateral send is not exposed by the HyperliquidStrategy contract"
@@ -418,7 +500,6 @@ class HLProtocolEVM(HLProtocolBase):
             min_finality_threshold=min_finality_threshold,
         )
 
-    @transaction_method("usd_class_transfer_to_perp", TransferResponse)
     def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
         amount_uint = to_uint64(amount, 6)
         context = {"amount": amount_uint}
@@ -427,9 +508,16 @@ class HLProtocolEVM(HLProtocolBase):
         )
         args = [amount_uint, payload.as_tuple()]
 
-        return "transferSpotToPerp", args, context, {"amount": amount}  # type: ignore[return-value]
+        tx_request = TxRequest(
+            function="transferSpotToPerp",
+            args=args,
+            action="usd_class_transfer_to_perp",
+            context=context,
+            response_class=TransferResponse,
+            response_fields={"amount": amount},
+        )
+        return self._execute_transaction(tx_request, "usd_class_transfer_to_perp")
 
-    @transaction_method("usd_class_transfer_to_spot", TransferResponse)
     def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
         amount_uint = to_uint64(amount, 6)
         context = {"amount": amount_uint}
@@ -438,7 +526,15 @@ class HLProtocolEVM(HLProtocolBase):
         )
         args = [amount_uint, payload.as_tuple()]
 
-        return "transferPerpToSpot", args, context, {"amount": amount}  # type: ignore[return-value]
+        tx_request = TxRequest(
+            function="transferPerpToSpot",
+            args=args,
+            action="usd_class_transfer_to_spot",
+            context=context,
+            response_class=TransferResponse,
+            response_fields={"amount": amount},
+        )
+        return self._execute_transaction(tx_request, "usd_class_transfer_to_spot")
 
     # ------------------------------------------------------------------
     # Market data helpers
@@ -529,12 +625,12 @@ class HLProtocolEVM(HLProtocolBase):
 
     def _format_limit_price(self, asset_id: int, limit_px: float | Decimal) -> float | Decimal:
         """Format price according to asset's tick size requirements."""
-        sz_decimals = self._resolve_perp_sz_decimals(asset_id)
+        sz_decimals = self._metadata.resolve_perp_sz_decimals(asset_id)
         if sz_decimals is not None:
             formatted = format_price_for_api(limit_px, sz_decimals, is_perp=True)
             return type(limit_px)(formatted) if isinstance(limit_px, Decimal) else formatted
 
-        base_sz_decimals = self._resolve_spot_base_sz_decimals(asset_id)
+        base_sz_decimals = self._metadata.resolve_spot_base_sz_decimals(asset_id)
         if base_sz_decimals is not None:
             formatted = format_price_for_api(limit_px, base_sz_decimals, is_perp=False)
             return type(limit_px)(formatted) if isinstance(limit_px, Decimal) else formatted
@@ -548,15 +644,6 @@ class HLProtocolEVM(HLProtocolBase):
         result = self._metadata.resolve_asset_id(asset)
         self._metadata_loaded = self._metadata.metadata_loaded
         return result
-
-    def _resolve_token_index(self, token: str | int) -> int:
-        return self._metadata.resolve_token_index(token)
-
-    def _resolve_perp_sz_decimals(self, asset_id: int) -> int | None:
-        return self._metadata.resolve_perp_sz_decimals(asset_id)
-
-    def _resolve_spot_base_sz_decimals(self, asset_id: int) -> int | None:
-        return self._metadata.resolve_spot_base_sz_decimals(asset_id)
 
     def _resolve_verification_payload(
         self, proof_desc: str, context: Mapping[str, Any]

@@ -35,124 +35,42 @@ class TIF(IntEnum):
 
 
 @dataclass
-class OrderResponse:
-    """Response from placing an order."""
+class Response:
+    """Generic response for all protocol operations."""
 
     success: bool
+    transaction_hash: str | None = None
+    error: str | None = None
+    raw_response: dict[str, Any] | None = None
     order_id: str | None = None
     cloid: str | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class CancelResponse:
-    """Response from cancelling an order."""
-
-    success: bool
     cancelled_orders: int = 0
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class TransferResponse:
-    """Response from vault or USD class transfers."""
-
-    success: bool
-    amount: float | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class DelegateResponse:
-    """Response from token delegation."""
-
-    success: bool
-    validator: str | None = None
-    amount: int | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class StakingResponse:
-    """Response from staking operations."""
-
-    success: bool
-    amount: int | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class SendResponse:
-    """Response from spot/perp send operations."""
-
-    success: bool
+    amount: float | int | None = None
     recipient: str | None = None
-    amount: float | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class FinalizeResponse:
-    """Response from finalizing subaccount."""
-
-    success: bool
+    validator: str | None = None
     subaccount: str | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class WalletResponse:
-    """Response from adding API wallet."""
-
-    success: bool
     wallet: str | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class ApprovalResponse:
-    """Response from builder fee approval."""
-
-    success: bool
     builder: str | None = None
     fee: float | None = None
     nonce: int | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class BridgeResponse:
-    """Response from CCTPv2 bridge operations."""
-
-    success: bool
-    amount: float | None = None
     burn_tx_hash: str | None = None
     claim_tx_hash: str | None = None
     message: str | None = None
     attestation: str | None = None
-    error: str | None = None
-    raw_response: dict[str, Any] | None = None
 
 
-# Type aliases for clarity
+OrderResponse = Response
+CancelResponse = Response
+TransferResponse = Response
+DelegateResponse = Response
+StakingResponse = Response
+SendResponse = Response
+FinalizeResponse = Response
+WalletResponse = Response
+ApprovalResponse = Response
+BridgeResponse = Response
+
+
 Price = int | float  # Will be converted to uint64 internally
 Size = int | float  # Will be converted to uint64 internally
 Address = str  # Ethereum address

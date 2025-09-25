@@ -29,7 +29,8 @@ def test_market_order_price_formatting():
     # Mock the internal methods to avoid actual network calls
     api._ensure_connected = MagicMock()
     api._resolve_asset_id = MagicMock(return_value=4)  # ETH asset ID
-    api._resolve_perp_sz_decimals = MagicMock(return_value=4)  # ETH has 4 sz_decimals
+    api._metadata.resolve_perp_sz_decimals = MagicMock(return_value=4)  # ETH has 4 sz_decimals
+    api._metadata.resolve_spot_base_sz_decimals = MagicMock(return_value=None)
 
     print("Testing Market Order Price Formatting")
     print("=" * 60)
@@ -91,7 +92,8 @@ def test_market_order_price_formatting():
     for test in test_cases:
         # Configure mocks for this test
         api._resolve_asset_id = MagicMock(return_value=test["asset_id"])
-        api._resolve_perp_sz_decimals = MagicMock(return_value=test["sz_decimals"])
+        api._metadata.resolve_perp_sz_decimals = MagicMock(return_value=test["sz_decimals"])
+        api._metadata.resolve_spot_base_sz_decimals = MagicMock(return_value=None)
 
         # Call the method
         formatted_price = api._compute_slippage_price(
