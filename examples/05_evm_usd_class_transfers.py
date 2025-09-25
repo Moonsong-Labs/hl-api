@@ -63,6 +63,7 @@ def main() -> None:
         mn_rpc_url=mn_rpc_url,
         hl_strategy_address=hl_strategy_address,
         bridge_strategy_address=bridge_address,
+        disable_call_verification=True,  # Skip call verification for this example
     )
 
     logging.info("Connecting to HyperLiquid EVM at %s", hl_rpc_url)

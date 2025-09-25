@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from web3.types import ChecksumAddress
 
@@ -20,6 +22,7 @@ class FlexibleVaultConfig:
     verifier_address: str | None = None
     verifier_network: str = "hyper"
     check_merkle_root: bool = False
+    proof_blob: Mapping[str, Any] | None = None
 
 
 DEFAULT_REQUEST_TIMEOUT = 10.0
@@ -94,6 +97,7 @@ class EVMClientConfig:
                 verifier_address=flexible_vault.verifier_address,
                 verifier_network=flexible_vault.verifier_network,
                 check_merkle_root=flexible_vault.check_merkle_root,
+                proof_blob=flexible_vault.proof_blob,
             )
 
         return EVMClientConfig(

@@ -3,12 +3,9 @@
 from abc import ABC, abstractmethod
 
 from .types import (
-    ApprovalResponse,
     CancelResponse,
-    DelegateResponse,
     OrderResponse,
     SendResponse,
-    StakingResponse,
     TransferResponse,
 )
 

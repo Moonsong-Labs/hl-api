@@ -74,6 +74,7 @@ class HLProtocolEVM(HLProtocolBase):
         mainnet_domain: int | None = None,
         cctp_finality_threshold: int = DEFAULT_CCTP_FINALITY_THRESHOLD,
         flexible_vault: FlexibleVaultConfig | None = None,
+        flexible_vault_proof_blob: Mapping[str, Any] | None = None,
         disable_call_verification: bool = False,
     ) -> None:
         hl_address = cast(ChecksumAddress, validate_address(hl_strategy_address))
@@ -92,10 +93,20 @@ class HLProtocolEVM(HLProtocolBase):
 
         if disable_call_verification:
             flexible_vault_config: FlexibleVaultConfig | None = None
-        elif flexible_vault is None:
-            flexible_vault_config = FlexibleVaultConfig()
         else:
-            flexible_vault_config = flexible_vault
+            base_config = flexible_vault or FlexibleVaultConfig()
+            blob_override = (
+                flexible_vault_proof_blob
+                if flexible_vault_proof_blob is not None
+                else base_config.proof_blob
+            )
+            flexible_vault_config = FlexibleVaultConfig(
+                proof_url=base_config.proof_url,
+                verifier_address=base_config.verifier_address,
+                verifier_network=base_config.verifier_network,
+                check_merkle_root=base_config.check_merkle_root,
+                proof_blob=blob_override,
+            )
 
         config = EVMClientConfig(
             private_key=private_key,
@@ -330,7 +341,9 @@ class HLProtocolEVM(HLProtocolBase):
             "tif": tif_uint,
             "cloid": cloid_uint,
         }
-        payload = self._resolve_verification_payload("CoreWriter.sendRawAction{action: limit_order}", context)
+        payload = self._resolve_verification_payload(
+            "CoreWriter.sendRawAction{action: limit_order}(anyBytes)", context
+        )
         fn_name = "placeLimitBuyOrder" if is_buy else "placeLimitSellOrder"
         args = [
             asset_id,
@@ -349,7 +362,9 @@ class HLProtocolEVM(HLProtocolBase):
         asset_id = self._resolve_asset_id(asset)
         oid = int(order_id)
         context = {"asset": asset_id, "oid": oid}
-        payload = self._resolve_verification_payload("CoreWriter.sendRawAction{action: cancel_oid}", context)
+        payload = self._resolve_verification_payload(
+            "CoreWriter.sendRawAction{action: cancel_oid}(anyBytes)", context
+        )
         args = [asset_id, oid, payload.as_tuple()]
 
         return "cancelOrderByOid", args, context, {"cancelled_orders": 1}  # type: ignore[return-value]
@@ -359,7 +374,9 @@ class HLProtocolEVM(HLProtocolBase):
         asset_id = self._resolve_asset_id(asset)
         cloid_uint = cloid_to_uint128(cloid)
         context = {"asset": asset_id, "cloid": cloid_uint}
-        payload = self._resolve_verification_payload("CoreWriter.sendRawAction{action: cancel_cloid}", context)
+        payload = self._resolve_verification_payload(
+            "CoreWriter.sendRawAction{action: cancel_cloid}(anyBytes)", context
+        )
         args = [asset_id, cloid_uint, payload.as_tuple()]
 
         return "cancelOrderByCloid", args, context, {"cancelled_orders": 1}  # type: ignore[return-value]
@@ -378,7 +395,9 @@ class HLProtocolEVM(HLProtocolBase):
     ) -> SendResponse:
         amount_uint = size_to_uint64(amount)
         context = {"token": token, "amount": amount_uint, "recipient": recipient}
-        payload = self._resolve_verification_payload("CoreWriter.sendRawAction{action: spot_send}", context)
+        payload = self._resolve_verification_payload(
+            "CoreWriter.sendRawAction{action: spot_send}(anyBytes)", context
+        )
 
         if self._is_hype_token(token):
             args = [amount_uint, payload.as_tuple()]
@@ -426,7 +445,9 @@ class HLProtocolEVM(HLProtocolBase):
     def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
         amount_uint = size_to_uint64(amount, 6)
         context = {"amount": amount_uint}
-        payload = self._resolve_verification_payload("CoreWriter.sendRawAction{action: usd_transfer}", context)
+        payload = self._resolve_verification_payload(
+            "CoreWriter.sendRawAction{action: usd_transfer}(anyBytes)", context
+        )
         args = [amount_uint, payload.as_tuple()]
 
         return "transferSpotToPerp", args, context, {"amount": amount}  # type: ignore[return-value]
@@ -435,7 +456,9 @@ class HLProtocolEVM(HLProtocolBase):
     def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
         amount_uint = size_to_uint64(amount, 6)
         context = {"amount": amount_uint}
-        payload = self._resolve_verification_payload("CoreWriter.sendRawAction{action: usd_transfer}", context)
+        payload = self._resolve_verification_payload(
+            "CoreWriter.sendRawAction{action: usd_transfer}(anyBytes)", context
+        )
         args = [amount_uint, payload.as_tuple()]
 
         return "transferPerpToSpot", args, context, {"amount": amount}  # type: ignore[return-value]

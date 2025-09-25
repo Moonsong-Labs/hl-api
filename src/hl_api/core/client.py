@@ -14,13 +14,9 @@ from hyperliquid.utils.types import Cloid
 from ..base import HLProtocolBase
 from ..exceptions import AuthenticationError, NetworkError
 from ..types import (
-    ApprovalResponse,
     CancelResponse,
-    DelegateResponse,
-    FinalizeResponse,
     OrderResponse,
     SendResponse,
-    StakingResponse,
     TransferResponse,
 )
 from ..utils import size_to_uint64

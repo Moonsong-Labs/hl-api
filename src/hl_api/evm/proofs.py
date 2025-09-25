@@ -49,10 +49,34 @@ class ProofManager:
         self._validated_roots: set[str] = set()
 
     def fetch(self, config: FlexibleVaultConfig) -> ProofDataset:
+        blob = config.proof_blob
+        if blob is not None:
+            if not isinstance(blob, Mapping):
+                raise ValidationError(
+                    "Flexible vault proof blob must be a mapping",
+                    field="proof_blob",
+                    value=blob,
+                )
+
+            source_label = config.proof_url or "<inline>"
+            if source_label == "<inline>":
+                logger.debug("Loading flexible vault proof set from inline blob")
+            else:
+                logger.debug(
+                    "Loading flexible vault proof set from inline blob via %s",
+                    source_label,
+                )
+            dataset = _build_dataset(blob, source_label=source_label)
+            if config.proof_url:
+                self._cache.setdefault(config.proof_url, dataset)
+            return dataset
+
         url = config.proof_url
         if not url:
             raise ValidationError(
-                "Flexible vault proof URL is required", field="proof_url", value=url
+                "Flexible vault proof URL is required when no blob is provided",
+                field="proof_url",
+                value=url,
             )
 
         cached = self._cache.get(url)
@@ -90,28 +114,7 @@ class ProofManager:
                 details={"url": url},
             )
 
-        title = _expect_str(payload.get("title"), "title")
-        merkle_root = _expect_hex(payload.get("merkle_root"), "merkle_root", expected_bytes=32)
-        proofs_raw = payload.get("merkle_proofs")
-        if not isinstance(proofs_raw, list):
-            raise ValidationError(
-                "Proof payload missing merkle_proofs list",
-                field="merkle_proofs",
-                value=proofs_raw,
-            )
-
-        payloads: dict[str, Mapping[str, Any]] = {}
-        for entry in proofs_raw:
-            if not isinstance(entry, Mapping):
-                raise ValidationError(
-                    "Proof entry must be an object",
-                    field="merkle_proofs",
-                    value=entry,
-                )
-            description = _expect_str(entry.get("description"), "description")
-            payloads[description] = dict(entry)
-
-        dataset = ProofDataset(url=url, title=title, merkle_root=merkle_root, payloads=payloads)
+        dataset = _build_dataset(payload, source_label=url)
         self._cache[url] = dataset
         return dataset
 
@@ -155,6 +158,32 @@ class ProofManager:
         self._validated_roots.add(cache_key)
 
 
+def _build_dataset(payload: Mapping[str, Any], *, source_label: str) -> ProofDataset:
+    title = _expect_str(payload.get("title"), "title")
+    merkle_root = _expect_hex(payload.get("merkle_root"), "merkle_root", expected_bytes=32)
+    proofs_raw = payload.get("merkle_proofs")
+    if not isinstance(proofs_raw, list):
+        raise ValidationError(
+            "Proof payload missing merkle_proofs list",
+            field="merkle_proofs",
+            value=proofs_raw,
+        )
+
+    proof_payloads: dict[str, Mapping[str, Any]] = {}
+    for entry in proofs_raw:
+        if not isinstance(entry, Mapping):
+            raise ValidationError(
+                "Proof entry must be an object",
+                field="merkle_proofs",
+                value=entry,
+            )
+        description = _expect_str(entry.get("description"), "description")
+        proof_payloads[description] = dict(entry)
+
+    label = source_label if source_label != "<inline>" else f"inline:{merkle_root}"
+    return ProofDataset(url=label, title=title, merkle_root=merkle_root, payloads=proof_payloads)
+
+
 class FlexibleVaultProofResolver:
     """Coordinate flexible vault proof retrieval and payload construction."""
 
@@ -174,7 +203,9 @@ class FlexibleVaultProofResolver:
         self._manager.ensure_merkle_root(config, self._dataset, connections)
 
     def resolve(
-        self, description: str, _context: Mapping[str, Any] | None = None,
+        self,
+        description: str,
+        _context: Mapping[str, Any] | None = None,
     ) -> VerificationPayload:
         if not self._config:
             raise ValidationError(
