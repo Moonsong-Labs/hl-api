@@ -41,7 +41,7 @@ def main() -> None:
     if not bridge_address:
         raise ValueError("BRIDGE_STRATEGY not found in environment variables")
 
-    proof_blob_path = Path(__file__).with_name("example_verification_blob.json")
+    proof_blob_path = Path(__file__).parent / "blobs" / "example_verification_blob.json"
     with proof_blob_path.open("r", encoding="utf-8") as proof_file:
         verification_blob = json.load(proof_file)
 
