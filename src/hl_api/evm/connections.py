@@ -46,14 +46,7 @@ class Web3Connections:
     def connect(self) -> None:
         """Initialise providers, contract handles and signing middleware."""
 
-        try:
-            signer = cast(LocalAccount, Account.from_key(self.config.private_key))  # type: ignore[arg-type]
-        except Exception as exc:  # pragma: no cover - defensive
-            raise ValidationError(
-                "Failed to derive signer account from provided private key",
-                field="private_key",
-                details={"error": str(exc)},
-            ) from exc
+        signer = cast(LocalAccount, Account.from_key(self.config.private_key))  # type: ignore[arg-type]
 
         self._account = signer
 
@@ -198,26 +191,12 @@ class Web3Connections:
         addr_str = address.value if isinstance(address, Precompile) else address
         destination = Web3.to_checksum_address(addr_str)
 
-        try:
-            result = web3.eth.call({"to": destination, "data": call_data})
-        except Exception as exc:  # pragma: no cover - defensive
-            raise NetworkError(
-                "Failed to execute L1 read precompile",
-                endpoint=str(destination),
-                details={"error": str(exc)},
-            ) from exc
+        result = web3.eth.call({"to": destination, "data": call_data})
 
         if not output_types:
             return tuple()
 
-        try:
-            decoded = abi_decode(list(output_types), result)
-        except Exception as exc:  # pragma: no cover - defensive
-            raise NetworkError(
-                "Failed to decode L1 read precompile response",
-                endpoint=str(destination),
-                details={"error": str(exc)},
-            ) from exc
+        decoded = abi_decode(list(output_types), result)
 
         return tuple(decoded)
 
@@ -238,24 +217,9 @@ class Web3Connections:
     def _load_and_validate_subvault(self) -> ChecksumAddress:
         contract = self.strategy_contract
 
-        try:
-            raw_subvault = contract.functions.subvault().call()
-        except Exception as exc:  # pragma: no cover - defensive
-            raise ValidationError(
-                "Unable to read strategy subvault address",
-                field="subvault",
-                details={"error": str(exc)},
-            ) from exc
+        raw_subvault = contract.functions.subvault().call()
 
-        try:
-            normalized = Web3.to_checksum_address(raw_subvault)
-        except Exception as exc:  # pragma: no cover - defensive
-            raise ValidationError(
-                "Strategy contract returned an invalid subvault",
-                field="subvault",
-                value=raw_subvault,
-                details={"error": str(exc)},
-            ) from exc
+        normalized = Web3.to_checksum_address(raw_subvault)
 
         subvault = Web3.to_checksum_address(normalized)
         if int(subvault, 16) == 0:

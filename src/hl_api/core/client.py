@@ -94,50 +94,42 @@ class HLProtocolCore(HLProtocolBase):
     ) -> Response:
         self._ensure_connected()
 
-        try:
-            order_request: dict[str, Any] = {
-                "name": asset,
-                "is_buy": is_buy,
-                "sz": sz,
-                "limit_px": limit_px,
-                "order_type": {"limit": {"tif": tif.capitalize()}},
-                "reduce_only": reduce_only,
-            }
+        order_request: dict[str, Any] = {
+            "name": asset,
+            "is_buy": is_buy,
+            "sz": sz,
+            "limit_px": limit_px,
+            "order_type": {"limit": {"tif": tif.capitalize()}},
+            "reduce_only": reduce_only,
+        }
 
-            if cloid:
-                order_request["cloid"] = Cloid.from_str(cloid)
+        if cloid:
+            order_request["cloid"] = Cloid.from_str(cloid)
 
-            result = self._connections.exchange.order(**order_request)
-            if result["status"] == "err":
-                logger.error("Order request failed: %s", result["response"])
+        result = self._connections.exchange.order(**order_request)
+        if result["status"] == "err":
+            raise NetworkError(f"Order request failed: {result['response']}")
 
-            return Response(
-                success=True,
-                order_id=result.get("response", {})
-                .get("data", {})
-                .get("statuses", [{}])[0]
-                .get("resting", {})
-                .get("oid"),
-                cloid=cloid,
-                raw_response=result,
-            )
-
-        except Exception as exc:
-            logger.error("Failed to place limit order: %s", exc)
-            return Response(success=False, cloid=cloid, error=str(exc))
+        return Response(
+            success=True,
+            order_id=result.get("response", {})
+            .get("data", {})
+            .get("statuses", [{}])[0]
+            .get("resting", {})
+            .get("oid"),
+            cloid=cloid,
+            raw_response=result,
+        )
 
     def get_market_price(self, asset: str) -> float:
         self._ensure_connected()
 
-        try:
-            info = self._connections.info
-            data = info.all_mids()
-            asset_upper = asset.upper()
-            if asset_upper not in data:
-                raise ValueError(f"Asset '{asset}' not found in market data")
-            return float(data[asset_upper])
-        except Exception as exc:
-            raise NetworkError(f"Failed to fetch market price for {asset}: {exc}") from exc
+        info = self._connections.info
+        data = info.all_mids()
+        asset_upper = asset.upper()
+        if asset_upper not in data:
+            raise ValueError(f"Asset '{asset}' not found in market data")
+        return float(data[asset_upper])
 
     def market_order(
         self,
@@ -149,37 +141,31 @@ class HLProtocolCore(HLProtocolBase):
     ) -> Response:
         self._ensure_connected()
 
-        try:
-            exchange = self._connections.exchange
+        exchange = self._connections.exchange
 
-            cloid_obj = Cloid.from_str(cloid) if cloid else None
+        cloid_obj = Cloid.from_str(cloid) if cloid else None
 
-            result = exchange.market_open(
-                name=asset,
-                is_buy=is_buy,
-                sz=sz,
-                slippage=slippage,
-                cloid=cloid_obj,
-            )
+        result = exchange.market_open(
+            name=asset,
+            is_buy=is_buy,
+            sz=sz,
+            slippage=slippage,
+            cloid=cloid_obj,
+        )
 
-            if result.get("status") == "err":
-                logger.error("Market order request failed: %s", result["response"])
+        if result.get("status") == "err":
+            raise NetworkError(f"Market order request failed: {result['response']}")
 
-            return Response(
-                success=True,
-                order_id=result.get("response", {})
-                .get("data", {})
-                .get("statuses", [{}])[0]
-                .get("resting", {})
-                .get("oid"),
-                cloid=cloid,
-                raw_response=result,
-            )
-
-        except Exception as exc:
-            error_msg = str(exc)
-            logger.error("Failed to place market order: %s", error_msg)
-            return Response(success=False, cloid=cloid, error=error_msg)
+        return Response(
+            success=True,
+            order_id=result.get("response", {})
+            .get("data", {})
+            .get("statuses", [{}])[0]
+            .get("resting", {})
+            .get("oid"),
+            cloid=cloid,
+            raw_response=result,
+        )
 
     def market_close_position(
         self,
@@ -190,36 +176,30 @@ class HLProtocolCore(HLProtocolBase):
     ) -> Response:
         self._ensure_connected()
 
-        try:
-            exchange = self._connections.exchange
+        exchange = self._connections.exchange
 
-            cloid_obj = Cloid.from_str(cloid) if cloid else None
+        cloid_obj = Cloid.from_str(cloid) if cloid else None
 
-            result = exchange.market_close(
-                coin=asset,
-                sz=size,
-                slippage=slippage,
-                cloid=cloid_obj,
-            )
+        result = exchange.market_close(
+            coin=asset,
+            sz=size,
+            slippage=slippage,
+            cloid=cloid_obj,
+        )
 
-            if result.get("status") == "err":
-                logger.error("Market close position request failed: %s", result["response"])
+        if result.get("status") == "err":
+            raise NetworkError(f"Market close position request failed: {result['response']}")
 
-            return Response(
-                success=True,
-                order_id=result.get("response", {})
-                .get("data", {})
-                .get("statuses", [{}])[0]
-                .get("resting", {})
-                .get("oid"),
-                cloid=cloid,
-                raw_response=result,
-            )
-
-        except Exception as exc:
-            error_msg = str(exc)
-            logger.error("Failed to close position: %s", error_msg)
-            return Response(success=False, cloid=cloid, error=error_msg)
+        return Response(
+            success=True,
+            order_id=result.get("response", {})
+            .get("data", {})
+            .get("statuses", [{}])[0]
+            .get("resting", {})
+            .get("oid"),
+            cloid=cloid,
+            raw_response=result,
+        )
 
     # ------------------------------------------------------------------
     # Cancellations
@@ -227,28 +207,17 @@ class HLProtocolCore(HLProtocolBase):
     def cancel_order_by_oid(self, asset: str, order_id: int) -> Response:
         self._ensure_connected()
 
-        try:
-            result = self._connections.exchange.cancel(asset, order_id)
-            return Response(success=True, cancelled_orders=1, raw_response=result)
-        except Exception as exc:
-            logger.error("Failed to cancel order by OID: %s", exc)
-            return Response(success=False, error=str(exc))
+        result = self._connections.exchange.cancel(asset, order_id)
+        return Response(success=True, cancelled_orders=1, raw_response=result)
 
     def cancel_order_by_cloid(self, asset: str, cloid: str) -> Response:
         self._ensure_connected()
 
         if not cloid.startswith("0x"):
-            return Response(
-                success=False,
-                error=f"Invalid CLOID format: must start with 0x, got {cloid}",
-            )
+            raise ValueError(f"Invalid CLOID format: must start with 0x, got {cloid}")
 
-        try:
-            result = self._connections.exchange.cancel_by_cloid(asset, Cloid(cloid))
-            return Response(success=True, cancelled_orders=1, raw_response=result)
-        except Exception as exc:
-            logger.error("Failed to cancel order by CLOID: %s", exc)
-            return Response(success=False, error=str(exc))
+        result = self._connections.exchange.cancel_by_cloid(asset, Cloid(cloid))
+        return Response(success=True, cancelled_orders=1, raw_response=result)
 
     def cancel_order(self, asset: str, order_id: int | str) -> Response:
         if isinstance(order_id, int):
@@ -266,59 +235,39 @@ class HLProtocolCore(HLProtocolBase):
     def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> Response:
         self._ensure_connected()
 
-        try:
-            result = self._connections.exchange.vault_usd_transfer(
-                vault_address=vault,
-                is_deposit=is_deposit,
-                usd=to_uint64(usd, 6),
-            )
-            return Response(success=True, amount=usd, raw_response=result)
-        except Exception as exc:
-            logger.error("Failed vault transfer: %s", exc)
-            return Response(success=False, error=str(exc))
+        result = self._connections.exchange.vault_usd_transfer(
+            vault_address=vault,
+            is_deposit=is_deposit,
+            usd=to_uint64(usd, 6),
+        )
+        return Response(success=True, amount=usd, raw_response=result)
 
     def usd_class_transfer_to_perp(self, amount: float) -> Response:
         self._ensure_connected()
 
-        try:
-            result = self._connections.exchange.usd_class_transfer(amount=amount, to_perp=True)
-            return Response(success=True, amount=amount, raw_response=result)
-        except Exception as exc:
-            logger.error("Failed USD transfer to perp: %s", exc)
-            return Response(success=False, error=str(exc))
+        result = self._connections.exchange.usd_class_transfer(amount=amount, to_perp=True)
+        return Response(success=True, amount=amount, raw_response=result)
 
     def usd_class_transfer_to_spot(self, amount: float) -> Response:
         self._ensure_connected()
 
-        try:
-            result = self._connections.exchange.usd_class_transfer(amount=amount, to_perp=False)
-            return Response(success=True, amount=amount, raw_response=result)
-        except Exception as exc:
-            logger.error("Failed USD transfer to spot: %s", exc)
-            return Response(success=False, error=str(exc))
+        result = self._connections.exchange.usd_class_transfer(amount=amount, to_perp=False)
+        return Response(success=True, amount=amount, raw_response=result)
 
     def spot_send(self, recipient: str, token: str, amount: float, destination: str) -> Response:
         self._ensure_connected()
 
-        try:
-            result = self._connections.exchange.send_asset(
-                destination=recipient,
-                source_dex="perp",
-                destination_dex="perp",
-                token=token,
-                amount=amount,
-            )
-            return Response(success=True, recipient=recipient, amount=amount, raw_response=result)
-        except Exception as exc:
-            logger.error("Failed spot send: %s", exc)
-            return Response(success=False, error=str(exc))
+        result = self._connections.exchange.send_asset(
+            destination=recipient,
+            source_dex="perp",
+            destination_dex="perp",
+            token=token,
+            amount=amount,
+        )
+        return Response(success=True, recipient=recipient, amount=amount, raw_response=result)
 
     def perp_send(self, recipient: str, amount: float, destination: str) -> Response:
         self._ensure_connected()
 
-        try:
-            result = self._connections.exchange.usd_transfer(destination=recipient, amount=amount)
-            return Response(success=True, recipient=recipient, amount=amount, raw_response=result)
-        except Exception as exc:
-            logger.error("Failed perp send: %s", exc)
-            return Response(success=False, error=str(exc))
+        result = self._connections.exchange.usd_transfer(destination=recipient, amount=amount)
+        return Response(success=True, recipient=recipient, amount=amount, raw_response=result)

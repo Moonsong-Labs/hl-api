@@ -160,13 +160,6 @@ class HLProtocolEVM(HLProtocolBase):
         except (ValidationError, NetworkError):
             self.disconnect()
             raise
-        except Exception as exc:  # pragma: no cover - defensive
-            self.disconnect()
-            raise NetworkError(
-                "Failed to initialize HyperLiquid EVM connection",
-                endpoint=self.rpc_url,
-                details={"error": str(exc)},
-            ) from exc
 
     def disconnect(self) -> None:
         self._connections.disconnect()
@@ -208,19 +201,8 @@ class HLProtocolEVM(HLProtocolBase):
 
             return tx_request.response_class(**response_data)
 
-        except (ValidationError, NetworkError) as exc:
-            return tx_request.response_class(
-                success=False,
-                error=str(exc),
-                **{
-                    k: v
-                    for k, v in tx_request.response_fields.items()
-                    if k not in ["success", "error"]
-                },
-            )
-        except Exception as exc:
-            logger.exception(f"Unexpected {func_name} failure")
-            return tx_request.response_class(success=False, error=str(exc))
+        except (ValidationError, NetworkError):
+            raise
 
     # ------------------------------------------------------------------
     # Core actions
@@ -238,12 +220,8 @@ class HLProtocolEVM(HLProtocolBase):
         slippage: float = 0.05,
         cloid: str | None = None,
     ) -> Response:
-        try:
-            mid_price, bid_price, ask_price = self._market_price_context(asset)
-            limit_price = self._compute_slippage_price(asset, float(mid_price), is_buy, slippage)
-        except (NetworkError, ValidationError) as exc:
-            logger.error("Failed to compute market order price for %s: %s", asset, exc)
-            return Response(success=False, cloid=cloid, error=str(exc))
+        mid_price, bid_price, ask_price = self._market_price_context(asset)
+        limit_price = self._compute_slippage_price(asset, float(mid_price), is_buy, slippage)
 
         bid_str = f"{bid_price:.8f}" if bid_price is not None else "n/a"
         ask_str = f"{ask_price:.8f}" if ask_price is not None else "n/a"
@@ -283,11 +261,7 @@ class HLProtocolEVM(HLProtocolBase):
     ) -> Response:
         self._ensure_connected()
 
-        try:
-            position = self._fetch_user_position(asset)
-        except NetworkError as exc:
-            logger.error("Failed to fetch position state for %s: %s", asset, exc)
-            return Response(success=False, cloid=cloid, error=str(exc))
+        position = self._fetch_user_position(asset)
 
         if position is None:
             message = f"No open position found for asset {asset}"
@@ -326,12 +300,8 @@ class HLProtocolEVM(HLProtocolBase):
             error = ValidationError("Close size must be positive", field="size", value=target_size)
             return Response(success=False, cloid=cloid, error=str(error))
 
-        try:
-            mid_price = self.get_market_price(asset)
-            limit_price = self._compute_slippage_price(asset, mid_price, is_buy, slippage)
-        except (NetworkError, ValidationError) as exc:
-            logger.error("Failed to compute close order price for %s: %s", asset, exc)
-            return Response(success=False, cloid=cloid, error=str(exc))
+        mid_price = self.get_market_price(asset)
+        limit_price = self._compute_slippage_price(asset, mid_price, is_buy, slippage)
 
         return self.limit_order(
             asset=asset,
@@ -773,12 +743,6 @@ class HLProtocolEVM(HLProtocolBase):
             raise NetworkError(str(exc), endpoint=self.rpc_url, details=exc.details) from exc
         except NetworkError:
             pass
-        except Exception as exc:  # pragma: no cover - defensive
-            raise NetworkError(
-                "Unexpected failure resolving strategy subvault",
-                endpoint=self.rpc_url,
-                details={"error": str(exc)},
-            ) from exc
 
         try:
             return self.account.address
@@ -882,26 +846,19 @@ class HLProtocolEVM(HLProtocolBase):
         return contract.functions.decimals().call()
 
     def _get_token_wei_decimals(self, token_index: int) -> int:
-        try:
-            from ..utils.token_metadata import get_token_info
+        from ..utils.token_metadata import get_token_info
 
-            testnet = "testnet" in self._config.hl_rpc_url
-            tokens = get_token_info(testnet=testnet)
+        testnet = "testnet" in self._config.hl_rpc_url
+        tokens = get_token_info(testnet=testnet)
 
-            for token in tokens:
-                if token.get("index") == token_index:
-                    wei_decimals = token.get("weiDecimals")
-                    if wei_decimals is not None:
-                        return int(wei_decimals)
+        for token in tokens:
+            if token.get("index") == token_index:
+                wei_decimals = token.get("weiDecimals")
+                if wei_decimals is not None:
+                    return int(wei_decimals)
 
-            logger.warning(f"weiDecimals not found for token index {token_index}, defaulting to 8")
-            raise ValueError("Token index not found in metadata")
-
-        except Exception as e:
-            logger.warning(
-                f"Failed to get weiDecimals for token {token_index}: {e}, defaulting to 8"
-            )
-            raise e
+        logger.warning(f"weiDecimals not found for token index {token_index}, defaulting to 8")
+        raise ValueError("Token index not found in metadata")
 
     # ------------------------------------------------------------------
     # Connection-backed properties
