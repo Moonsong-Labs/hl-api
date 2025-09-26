@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, cast
+from typing import Any
 
 import requests
 from eth_account.signers.local import LocalAccount
@@ -15,27 +16,16 @@ from web3.types import ChecksumAddress
 
 from ..base import HLProtocolBase
 from ..constants import Precompile
-from ..evm_utils import build_verification_url, transaction_method
 from ..exceptions import NetworkError, ValidationError
 from ..types import (
-    ApprovalResponse,
-    BridgeResponse,
-    CancelResponse,
-    DelegateResponse,
-    FinalizeResponse,
-    OrderResponse,
-    SendResponse,
-    StakingResponse,
-    TransferResponse,
+    Response,
     VerificationPayload,
 )
 from ..utils import (
     cloid_to_uint128,
     encode_tif,
     format_price_for_api,
-    price_to_uint64,
-    size_to_uint64,
-    validate_address,
+    to_uint64,
 )
 from .bridge import CCTPBridge
 from .config import (
@@ -44,15 +34,26 @@ from .config import (
     DEFAULT_IRIS_POLL_INTERVAL,
     DEFAULT_RECEIPT_TIMEOUT,
     DEFAULT_REQUEST_TIMEOUT,
-    BridgeConfig,
     EVMClientConfig,
-    VerificationResolver,
 )
 from .connections import Web3Connections
 from .metadata import AssetMetadataCache
+from .proofs import FlexibleVaultProofResolver
 from .transactions import TransactionDispatcher
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TxRequest:
+    """Transaction request details for clean separation of concerns."""
+
+    function: str
+    args: list[Any]
+    action: str = ""
+    context: dict[str, Any] = field(default_factory=dict)
+    response_class: type[Response] = Response
+    response_fields: dict[str, Any] = field(default_factory=dict)
 
 
 class HLProtocolEVM(HLProtocolBase):
@@ -67,8 +68,6 @@ class HLProtocolEVM(HLProtocolBase):
         bridge_strategy_address: str,
         *,
         request_timeout: float = DEFAULT_REQUEST_TIMEOUT,
-        verification_payload_url: str | None = None,
-        verification_payload_resolver: VerificationResolver | None = None,
         wait_for_receipt: bool = True,
         receipt_timeout: float = DEFAULT_RECEIPT_TIMEOUT,
         testnet: bool = True,
@@ -78,20 +77,11 @@ class HLProtocolEVM(HLProtocolBase):
         hyperliquid_domain: int | None = None,
         mainnet_domain: int | None = None,
         cctp_finality_threshold: int = DEFAULT_CCTP_FINALITY_THRESHOLD,
+        flexible_vault_proof_blob: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
+        disable_call_verification: bool = False,
     ) -> None:
-        hl_address = cast(ChecksumAddress, validate_address(hl_strategy_address))
-        bridge_address = cast(ChecksumAddress, validate_address(bridge_strategy_address))
-
-        bridge_cfg = BridgeConfig(
-            wait_for_receipt=wait_for_receipt,
-            receipt_timeout=receipt_timeout,
-            iris_base_url=iris_base_url,
-            iris_poll_interval=iris_poll_interval,
-            iris_max_polls=iris_max_polls,
-            hyperliquid_domain=hyperliquid_domain,
-            mainnet_domain=mainnet_domain,
-            cctp_finality_threshold=cctp_finality_threshold,
-        )
+        hl_address = Web3.to_checksum_address(hl_strategy_address)
+        bridge_address = Web3.to_checksum_address(bridge_strategy_address)
 
         config = EVMClientConfig(
             private_key=private_key,
@@ -100,11 +90,17 @@ class HLProtocolEVM(HLProtocolBase):
             hl_strategy_address=hl_address,
             bridge_strategy_address=bridge_address,
             request_timeout=request_timeout,
-            verification_payload_url=verification_payload_url,
-            verification_payload_resolver=verification_payload_resolver,
             testnet=testnet,
-            bridge=bridge_cfg,
-        ).with_defaulted_urls()
+            wait_for_receipt=wait_for_receipt,
+            receipt_timeout=receipt_timeout,
+            iris_base_url=iris_base_url,
+            iris_poll_interval=iris_poll_interval,
+            iris_max_polls=iris_max_polls,
+            hyperliquid_domain=hyperliquid_domain,
+            mainnet_domain=mainnet_domain,
+            cctp_finality_threshold=cctp_finality_threshold,
+            flexible_vault_proof_blob=flexible_vault_proof_blob,
+        )
 
         self._config = config
         self._session = requests.Session()
@@ -112,28 +108,33 @@ class HLProtocolEVM(HLProtocolBase):
         self._metadata = AssetMetadataCache(config, self._connections, self._session)
         self._dispatcher = TransactionDispatcher(
             self._connections,
-            wait_for_receipt=config.bridge.wait_for_receipt,
-            receipt_timeout=config.bridge.receipt_timeout,
+            wait_for_receipt=config.wait_for_receipt,
+            receipt_timeout=config.receipt_timeout,
         )
-        self._bridge_helper = CCTPBridge(config, self._connections, self._session)
-        self._verification_payload_resolver = verification_payload_resolver
+        self._call_verification_disabled = disable_call_verification
+        self._flexible_proof_resolver: FlexibleVaultProofResolver | None
+        if not self._call_verification_disabled and config.flexible_vault_proof_blob:
+            self._flexible_proof_resolver = FlexibleVaultProofResolver(
+                config,
+                self._connections,
+                self._session,
+                request_timeout=config.request_timeout,
+            )
+        else:
+            self._flexible_proof_resolver = None
+        self._bridge_helper = CCTPBridge(
+            config,
+            self._connections,
+            self._session,
+            verification_resolver=self._flexible_proof_resolver,
+            disable_call_verification=self._call_verification_disabled,
+        )
 
-        # Compatibility attributes (retained for external callers/tests)
         self._asset_by_symbol = self._metadata.asset_by_symbol
         self._token_index_by_symbol = self._metadata.token_index_by_symbol
         self._metadata_loaded = self._metadata.metadata_loaded
         self._hype_token_index: int | None = None
         self._connected = False
-
-        # Frequently referenced configuration mirrors (legacy attribute names)
-        self._request_timeout = config.request_timeout
-        self._wait_for_receipt = config.bridge.wait_for_receipt
-        self._receipt_timeout = config.bridge.receipt_timeout
-        self._iris_base_url = config.bridge.iris_base_url
-        self._iris_poll_interval = config.bridge.iris_poll_interval
-        self._iris_max_polls = config.bridge.iris_max_polls
-        self._cctp_finality_threshold = config.bridge.cctp_finality_threshold
-        self._info_url = config.info_url
 
     # ------------------------------------------------------------------
     # Connection management
@@ -180,16 +181,54 @@ class HLProtocolEVM(HLProtocolBase):
     def _ensure_connected(self) -> None:
         self._connections.ensure_connected()
 
+    def _execute_transaction(self, tx_request: TxRequest, func_name: str) -> Response:
+        """Execute a transaction and return the appropriate response."""
+        try:
+            self._ensure_connected()
+
+            tx_result = self._send_contract_transaction(
+                tx_request.function,
+                tx_request.args,
+                action=tx_request.action or func_name,
+                context=tx_request.context,
+            )
+
+            receipt = tx_result.get("receipt")
+            status = bool(receipt is None or receipt.get("status", 0) == 1)
+
+            response_data: dict[str, Any] = {
+                "success": status,
+                "transaction_hash": tx_result["tx_hash"],
+                "error": None if status else tx_result.get("error", "Transaction reverted"),
+                "raw_response": tx_result,
+            }
+
+            for key, value in tx_request.response_fields.items():
+                response_data[key] = value
+
+            return tx_request.response_class(**response_data)
+
+        except (ValidationError, NetworkError) as exc:
+            return tx_request.response_class(
+                success=False,
+                error=str(exc),
+                **{
+                    k: v
+                    for k, v in tx_request.response_fields.items()
+                    if k not in ["success", "error"]
+                },
+            )
+        except Exception as exc:
+            logger.exception(f"Unexpected {func_name} failure")
+            return tx_request.response_class(success=False, error=str(exc))
+
     # ------------------------------------------------------------------
     # Core actions
     # ------------------------------------------------------------------
     def get_market_price(self, asset: str) -> float:
         self._ensure_connected()
-        try:
-            mid_price, _, _ = self._market_price_context(asset)
-            return float(mid_price)
-        except ValidationError as exc:
-            raise ValueError(str(exc)) from exc
+        mid_price, _, _ = self._market_price_context(asset)
+        return float(mid_price)
 
     def market_order(
         self,
@@ -198,13 +237,13 @@ class HLProtocolEVM(HLProtocolBase):
         sz: float,
         slippage: float = 0.05,
         cloid: str | None = None,
-    ) -> OrderResponse:
+    ) -> Response:
         try:
             mid_price, bid_price, ask_price = self._market_price_context(asset)
             limit_price = self._compute_slippage_price(asset, float(mid_price), is_buy, slippage)
         except (NetworkError, ValidationError) as exc:
             logger.error("Failed to compute market order price for %s: %s", asset, exc)
-            return OrderResponse(success=False, cloid=cloid, error=str(exc))
+            return Response(success=False, cloid=cloid, error=str(exc))
 
         bid_str = f"{bid_price:.8f}" if bid_price is not None else "n/a"
         ask_str = f"{ask_price:.8f}" if ask_price is not None else "n/a"
@@ -241,19 +280,19 @@ class HLProtocolEVM(HLProtocolBase):
         size: float | None = None,
         slippage: float = 0.05,
         cloid: str | None = None,
-    ) -> OrderResponse:
+    ) -> Response:
         self._ensure_connected()
 
         try:
             position = self._fetch_user_position(asset)
         except NetworkError as exc:
             logger.error("Failed to fetch position state for %s: %s", asset, exc)
-            return OrderResponse(success=False, cloid=cloid, error=str(exc))
+            return Response(success=False, cloid=cloid, error=str(exc))
 
         if position is None:
             message = f"No open position found for asset {asset}"
             logger.info(message)
-            return OrderResponse(success=False, cloid=cloid, error=message)
+            return Response(success=False, cloid=cloid, error=message)
 
         szi_raw = position.get("szi")
         try:
@@ -265,12 +304,12 @@ class HLProtocolEVM(HLProtocolBase):
                 value=position.get("szi"),
                 details={"error": str(exc)},
             )
-            return OrderResponse(success=False, cloid=cloid, error=str(error))
+            return Response(success=False, cloid=cloid, error=str(error))
 
         if position_size == 0:
             message = f"No open position found for asset {asset}"
             logger.info(message)
-            return OrderResponse(success=False, cloid=cloid, error=message)
+            return Response(success=False, cloid=cloid, error=message)
 
         is_buy = position_size < 0
 
@@ -281,18 +320,18 @@ class HLProtocolEVM(HLProtocolBase):
                 target_size = float(size)
             except (TypeError, ValueError):
                 error = ValidationError("Close size must be numeric", field="size", value=size)
-                return OrderResponse(success=False, cloid=cloid, error=str(error))
+                return Response(success=False, cloid=cloid, error=str(error))
 
         if target_size <= 0:
             error = ValidationError("Close size must be positive", field="size", value=target_size)
-            return OrderResponse(success=False, cloid=cloid, error=str(error))
+            return Response(success=False, cloid=cloid, error=str(error))
 
         try:
             mid_price = self.get_market_price(asset)
             limit_price = self._compute_slippage_price(asset, mid_price, is_buy, slippage)
         except (NetworkError, ValidationError) as exc:
             logger.error("Failed to compute close order price for %s: %s", asset, exc)
-            return OrderResponse(success=False, cloid=cloid, error=str(exc))
+            return Response(success=False, cloid=cloid, error=str(exc))
 
         return self.limit_order(
             asset=asset,
@@ -304,7 +343,6 @@ class HLProtocolEVM(HLProtocolBase):
             cloid=cloid,
         )
 
-    @transaction_method("limit_order", OrderResponse)
     def limit_order(
         self,
         asset: str,
@@ -314,11 +352,11 @@ class HLProtocolEVM(HLProtocolBase):
         reduce_only: bool = False,
         tif: str = "GTC",
         cloid: str | None = None,
-    ) -> OrderResponse:
+    ) -> Response:
         asset_id = self._resolve_asset_id(asset)
         formatted_price = self._format_limit_price(asset_id, limit_px)
-        price_uint = price_to_uint64(formatted_price)
-        size_uint = size_to_uint64(sz)
+        price_uint = to_uint64(formatted_price, 8)
+        size_uint = to_uint64(sz, 8)
         tif_uint = encode_tif(tif)
         cloid_uint = cloid_to_uint128(cloid)
 
@@ -328,7 +366,10 @@ class HLProtocolEVM(HLProtocolBase):
             "tif": tif_uint,
             "cloid": cloid_uint,
         }
-        payload = self._resolve_verification_payload("limit_order", context)
+        json_name = self._get_json_name_for_chain("hyperliquid")
+        payload = self._resolve_verification_payload(
+            "CoreWriter.sendRawAction{action: limit_order}(anyBytes)", json_name, context
+        )
         fn_name = "placeLimitBuyOrder" if is_buy else "placeLimitSellOrder"
         args = [
             asset_id,
@@ -340,71 +381,95 @@ class HLProtocolEVM(HLProtocolBase):
             payload.as_tuple(),
         ]
 
-        return fn_name, args, context, {"order_id": None, "cloid": cloid}  # type: ignore[return-value]
+        tx_request = TxRequest(
+            function=fn_name,
+            args=args,
+            action="limit_order",
+            context=context,
+            response_class=Response,
+            response_fields={"order_id": None, "cloid": cloid},
+        )
+        return self._execute_transaction(tx_request, "limit_order")
 
-    @transaction_method("cancel_order_by_oid", CancelResponse)
-    def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
+    def cancel_order_by_oid(self, asset: str, order_id: int) -> Response:
         asset_id = self._resolve_asset_id(asset)
         oid = int(order_id)
         context = {"asset": asset_id, "oid": oid}
-        payload = self._resolve_verification_payload("cancel_order_by_oid", context)
+
+        json_name = self._get_json_name_for_chain("hyperliquid")
+        payload = self._resolve_verification_payload(
+            "CoreWriter.sendRawAction{action: cancel_oid}(anyBytes)", json_name, context
+        )
         args = [asset_id, oid, payload.as_tuple()]
 
-        return "cancelOrderByOid", args, context, {"cancelled_orders": 1}  # type: ignore[return-value]
+        tx_request = TxRequest(
+            function="cancelOrderByOid",
+            args=args,
+            action="cancel_order_by_oid",
+            context=context,
+            response_class=Response,
+            response_fields={"cancelled_orders": 1},
+        )
+        return self._execute_transaction(tx_request, "cancel_order_by_oid")
 
-    @transaction_method("cancel_order_by_cloid", CancelResponse)
-    def cancel_order_by_cloid(self, asset: str, cloid: str) -> CancelResponse:
+    def cancel_order_by_cloid(self, asset: str, cloid: str) -> Response:
         asset_id = self._resolve_asset_id(asset)
         cloid_uint = cloid_to_uint128(cloid)
         context = {"asset": asset_id, "cloid": cloid_uint}
-        payload = self._resolve_verification_payload("cancel_order_by_cloid", context)
+        json_name = self._get_json_name_for_chain("hyperliquid")
+        payload = self._resolve_verification_payload(
+            "CoreWriter.sendRawAction{action: cancel_cloid}(anyBytes)", json_name, context
+        )
         args = [asset_id, cloid_uint, payload.as_tuple()]
 
-        return "cancelOrderByCloid", args, context, {"cancelled_orders": 1}  # type: ignore[return-value]
+        tx_request = TxRequest(
+            function="cancelOrderByCloid",
+            args=args,
+            action="cancel_order_by_cloid",
+            context=context,
+            response_class=Response,
+            response_fields={"cancelled_orders": 1},
+        )
+        return self._execute_transaction(tx_request, "cancel_order_by_cloid")
 
-    def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> TransferResponse:
+    def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> Response:
         message = (
             "Vault transfers are not available via the HyperliquidStrategy contract; "
             "use usd_class_transfer_to_perp/spot instead"
         )
         logger.warning("vault_transfer not supported for vault %s", vault)
-        return TransferResponse(success=False, amount=None, error=message)
+        return Response(success=False, amount=None, error=message)
 
-    def token_delegate(
-        self, validator: str, amount: float, is_undelegate: bool = False
-    ) -> DelegateResponse:
-        message = "Token delegation is not routed through the current strategy"
-        return DelegateResponse(success=False, validator=validator, amount=None, error=message)
-
-    def staking_deposit(self, amount: float) -> StakingResponse:
-        message = "Staking deposit is not supported by the HyperliquidStrategy contract"
-        return StakingResponse(success=False, amount=None, error=message)
-
-    def staking_withdraw(self, amount: float) -> StakingResponse:
-        message = "Staking withdrawal is not supported by the HyperliquidStrategy contract"
-        return StakingResponse(success=False, amount=None, error=message)
-
-    @transaction_method("spot_send", SendResponse)
-    def spot_send(
-        self, recipient: str, token: str, amount: float, destination: str
-    ) -> SendResponse:
-        amount_uint = size_to_uint64(amount)
+    def spot_send(self, recipient: str, token: str, amount: float, destination: str) -> Response:
+        amount_uint = to_uint64(amount, 8)
         context = {"token": token, "amount": amount_uint, "recipient": recipient}
-        payload = self._resolve_verification_payload("spot_send", context)
+
+        json_name = self._get_json_name_for_chain("hyperliquid")
+        payload = self._resolve_verification_payload(
+            "CoreWriter.sendRawAction{action: spot_send}(anyBytes)", json_name, context
+        )
 
         if self._is_hype_token(token):
             args = [amount_uint, payload.as_tuple()]
             fn_name = "withdrawHypeToEvm"
         else:
-            token_index = self._resolve_token_index(token)
+            token_index = self._metadata.resolve_token_index(token)
             args = [token_index, amount_uint, payload.as_tuple()]
             fn_name = "withdrawTokenToEvm"
 
-        return fn_name, args, context, {"recipient": recipient, "amount": amount}  # type: ignore[return-value]
+        tx_request = TxRequest(
+            function=fn_name,
+            args=args,
+            action="spot_send",
+            context=context,
+            response_class=Response,
+            response_fields={"recipient": recipient, "amount": amount},
+        )
+        return self._execute_transaction(tx_request, "spot_send")
 
-    def perp_send(self, recipient: str, amount: float, destination: str) -> SendResponse:
+    def perp_send(self, recipient: str, amount: float, destination: str) -> Response:
         message = "Perp collateral send is not exposed by the HyperliquidStrategy contract"
-        return SendResponse(success=False, recipient=recipient, amount=None, error=message)
+        return Response(success=False, recipient=recipient, amount=None, error=message)
 
     def bridge_mainnet_to_hyperliquid(
         self,
@@ -412,7 +477,7 @@ class HLProtocolEVM(HLProtocolBase):
         *,
         max_fee: int | None = None,
         min_finality_threshold: int | None = None,
-    ) -> BridgeResponse:
+    ) -> Response:
         self._ensure_connected()
         return self._bridge_helper.bridge_mainnet_to_hyperliquid(
             amount,
@@ -426,7 +491,7 @@ class HLProtocolEVM(HLProtocolBase):
         *,
         max_fee: int | None = None,
         min_finality_threshold: int | None = None,
-    ) -> BridgeResponse:
+    ) -> Response:
         self._ensure_connected()
         return self._bridge_helper.bridge_hyperliquid_to_mainnet(
             amount,
@@ -434,31 +499,45 @@ class HLProtocolEVM(HLProtocolBase):
             min_finality_threshold=min_finality_threshold,
         )
 
-    @transaction_method("usd_class_transfer_to_perp", TransferResponse)
-    def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
-        amount_uint = size_to_uint64(amount, 6)
+    def usd_class_transfer_to_perp(self, amount: float) -> Response:
+        amount_uint = to_uint64(amount, 6)
         context = {"amount": amount_uint}
-        payload = self._resolve_verification_payload("usd_class_transfer_to_perp", context)
+
+        json_name = self._get_json_name_for_chain("hyperliquid")
+        payload = self._resolve_verification_payload(
+            "CoreWriter.sendRawAction{action: usd_transfer}(anyBytes)", json_name, context
+        )
         args = [amount_uint, payload.as_tuple()]
 
-        return "transferSpotToPerp", args, context, {"amount": amount}  # type: ignore[return-value]
+        tx_request = TxRequest(
+            function="transferSpotToPerp",
+            args=args,
+            action="usd_class_transfer_to_perp",
+            context=context,
+            response_class=Response,
+            response_fields={"amount": amount},
+        )
+        return self._execute_transaction(tx_request, "usd_class_transfer_to_perp")
 
-    @transaction_method("usd_class_transfer_to_spot", TransferResponse)
-    def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
-        amount_uint = size_to_uint64(amount, 6)
+    def usd_class_transfer_to_spot(self, amount: float) -> Response:
+        amount_uint = to_uint64(amount, 6)
         context = {"amount": amount_uint}
-        payload = self._resolve_verification_payload("usd_class_transfer_to_spot", context)
+
+        json_name = self._get_json_name_for_chain("hyperliquid")
+        payload = self._resolve_verification_payload(
+            "CoreWriter.sendRawAction{action: usd_transfer}(anyBytes)", json_name, context
+        )
         args = [amount_uint, payload.as_tuple()]
 
-        return "transferPerpToSpot", args, context, {"amount": amount}  # type: ignore[return-value]
-
-    def finalize_subaccount(self, subaccount: str) -> FinalizeResponse:
-        message = "Subaccount finalization must be executed via CoreWriter directly"
-        return FinalizeResponse(success=False, subaccount=subaccount, error=message)
-
-    def approve_builder_fee(self, builder: str, fee: float, nonce: int) -> ApprovalResponse:
-        message = "Builder fee approvals are not implemented on the strategy contract"
-        return ApprovalResponse(success=False, builder=builder, fee=fee, nonce=nonce, error=message)
+        tx_request = TxRequest(
+            function="transferPerpToSpot",
+            args=args,
+            action="usd_class_transfer_to_spot",
+            context=context,
+            response_class=Response,
+            response_fields={"amount": amount},
+        )
+        return self._execute_transaction(tx_request, "usd_class_transfer_to_spot")
 
     # ------------------------------------------------------------------
     # Market data helpers
@@ -548,12 +627,13 @@ class HLProtocolEVM(HLProtocolBase):
         return float(formatted)
 
     def _format_limit_price(self, asset_id: int, limit_px: float | Decimal) -> float | Decimal:
-        sz_decimals = self._resolve_perp_sz_decimals(asset_id)
+        """Format price according to asset's tick size requirements."""
+        sz_decimals = self._metadata.resolve_perp_sz_decimals(asset_id)
         if sz_decimals is not None:
             formatted = format_price_for_api(limit_px, sz_decimals, is_perp=True)
             return type(limit_px)(formatted) if isinstance(limit_px, Decimal) else formatted
 
-        base_sz_decimals = self._resolve_spot_base_sz_decimals(asset_id)
+        base_sz_decimals = self._metadata.resolve_spot_base_sz_decimals(asset_id)
         if base_sz_decimals is not None:
             formatted = format_price_for_api(limit_px, base_sz_decimals, is_perp=False)
             return type(limit_px)(formatted) if isinstance(limit_px, Decimal) else formatted
@@ -568,32 +648,51 @@ class HLProtocolEVM(HLProtocolBase):
         self._metadata_loaded = self._metadata.metadata_loaded
         return result
 
-    def _resolve_token_index(self, token: str | int) -> int:
-        return self._metadata.resolve_token_index(token)
+    def _get_json_name_for_chain(self, chain: str = "hyperliquid") -> str:
+        """Determine the JSON name based on which chain the operation originates from.
 
-    def _resolve_perp_sz_decimals(self, asset_id: int) -> int | None:
-        return self._metadata.resolve_perp_sz_decimals(asset_id)
+        Args:
+            chain: Either "hyperliquid" for operations on HyperEVM or "mainnet" for operations on mainnet
+        """
+        if self._flexible_proof_resolver and hasattr(self._flexible_proof_resolver, "_datasets"):
+            if chain == "mainnet":
+                for title in self._flexible_proof_resolver._datasets.keys():
+                    if "mainnet" in title.lower() or "ethereum" in title.lower():
+                        return title
+            elif chain == "hyperliquid":  # hyperliquid chain operations
+                for title in self._flexible_proof_resolver._datasets.keys():
+                    if "hyperevm" in title.lower() or "hyperliquid" in title.lower():
+                        return title
+            else:
+                raise ValidationError(
+                    "Chain must be either 'hyperliquid' or 'mainnet'",
+                    field="chain",
+                    value=chain,
+                )
 
-    def _resolve_spot_base_sz_decimals(self, asset_id: int) -> int | None:
-        return self._metadata.resolve_spot_base_sz_decimals(asset_id)
+            datasets = self._flexible_proof_resolver._datasets
+            if datasets:
+                return next(iter(datasets.keys()))
+
+        # Fallback to a default name
+        return "default"
 
     def _resolve_verification_payload(
-        self, action: str, context: Mapping[str, Any]
+        self, proof_desc: str, json_name: str, context: Mapping[str, Any]
     ) -> VerificationPayload:
-        resolver = self._config.verification_payload_resolver or self._verification_payload_resolver
-        if resolver:
-            result = resolver(action, context)
-            if isinstance(result, VerificationPayload):
-                return result
-            mapped = dict(result) if isinstance(result, Mapping) else None
-            return VerificationPayload.from_dict(mapped)
+        if self._call_verification_disabled:
+            logger.debug(
+                "Call verification disabled; returning default payload for '%s'", proof_desc
+            )
+            return VerificationPayload.default()
 
-        if self._config.verification_payload_url:
-            url = build_verification_url(self._config.verification_payload_url, action, context)
-            data = self._request_json("GET", url)
-            mapped = dict(data) if isinstance(data, Mapping) else None
-            return VerificationPayload.from_dict(mapped)
+        if self._flexible_proof_resolver:
+            return self._flexible_proof_resolver.resolve(proof_desc, json_name, context)
 
+        logger.warning(
+            "No flexible vault proof resolver configured; returning default payload for description '%s'",
+            proof_desc,
+        )
         return VerificationPayload.default()
 
     # ------------------------------------------------------------------

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
+import json
 
 from dotenv import load_dotenv
 
 from hl_api import HLProtocolEVM
-from hl_api.types import BridgeResponse
+from hl_api.types import Response
 
 load_dotenv()
 
@@ -30,7 +32,7 @@ def _require_env(name: str) -> str:
     return value
 
 
-def _log_bridge_result(label: str, response: BridgeResponse) -> None:
+def _log_bridge_result(label: str, response: Response) -> None:
     context: dict[str, Any] = response.raw_response or {}
     if response.success:
         logger.info("%s succeeded (amount %.6f USDC)", label, response.amount or 0.0)
@@ -57,6 +59,16 @@ def main() -> None:
 
     amount = float(os.getenv("BRIDGE_AMOUNT_USDC", str(DEFAULT_AMOUNT)))
 
+    blobs_dir = Path(__file__).parent / "blobs"
+
+    blob_path_1 = blobs_dir / "example_verification_blob.json"
+    with blob_path_1.open("r", encoding="utf-8") as f:
+        verification_blob_1 = json.load(f)
+
+    blob_path_2 = blobs_dir / "example_verification_blob2.json"
+    with blob_path_2.open("r", encoding="utf-8") as f:
+        verification_blob_2 = json.load(f)
+
     client = HLProtocolEVM(
         private_key=private_key,
         hl_rpc_url=hl_rpc_url,
@@ -64,6 +76,7 @@ def main() -> None:
         hl_strategy_address=hl_strategy_address,
         bridge_strategy_address=bridge_strategy_address,
         testnet=testnet,
+        flexible_vault_proof_blob=[verification_blob_1, verification_blob_2],
     )
 
     client.connect()

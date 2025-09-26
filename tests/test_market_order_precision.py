@@ -7,7 +7,6 @@ from decimal import Decimal
 from typing import TypedDict
 from unittest.mock import MagicMock
 
-# Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from hl_api.evm import HLProtocolEVM
@@ -16,19 +15,19 @@ from hl_api.evm import HLProtocolEVM
 def test_market_order_price_formatting():
     """Test that market orders correctly format slippage prices."""
 
-    # Create instance with dummy values (we'll mock everything anyway)
     api = HLProtocolEVM(
-        private_key="0x" + "0" * 64,  # Dummy private key
-        hl_rpc_url="http://localhost:8545",  # Dummy HyperLiquid RPC URL
-        mn_rpc_url="http://localhost:9545",  # Dummy mainnet RPC URL
-        hl_strategy_address="0x" + "0" * 40,  # Dummy HyperLiquid strategy address
-        bridge_strategy_address="0x0000000000000000000000000000000000000001",  # Dummy bridge address
+        private_key="0x" + "0" * 64,
+        hl_rpc_url="http://localhost:8545",
+        mn_rpc_url="http://localhost:9545",
+        hl_strategy_address="0x" + "0" * 40,
+        bridge_strategy_address="0x0000000000000000000000000000000000000001",
+        disable_call_verification=True,
     )
 
-    # Mock the internal methods to avoid actual network calls
     api._ensure_connected = MagicMock()
     api._resolve_asset_id = MagicMock(return_value=4)  # ETH asset ID
-    api._resolve_perp_sz_decimals = MagicMock(return_value=4)  # ETH has 4 sz_decimals
+    api._metadata.resolve_perp_sz_decimals = MagicMock(return_value=4)  # ETH has 4 sz_decimals
+    api._metadata.resolve_spot_base_sz_decimals = MagicMock(return_value=None)
 
     print("Testing Market Order Price Formatting")
     print("=" * 60)
@@ -43,7 +42,6 @@ def test_market_order_price_formatting():
         expected_price: float
         description: str
 
-    # Test cases with different assets and prices
     test_cases: list[MarketOrderTestCase] = [
         {
             "asset": "ETH",
@@ -88,11 +86,10 @@ def test_market_order_price_formatting():
     ]
 
     for test in test_cases:
-        # Configure mocks for this test
         api._resolve_asset_id = MagicMock(return_value=test["asset_id"])
-        api._resolve_perp_sz_decimals = MagicMock(return_value=test["sz_decimals"])
+        api._metadata.resolve_perp_sz_decimals = MagicMock(return_value=test["sz_decimals"])
+        api._metadata.resolve_spot_base_sz_decimals = MagicMock(return_value=None)
 
-        # Call the method
         formatted_price = api._compute_slippage_price(
             asset=test["asset"],
             mid_price=test["mid_price"],
@@ -100,7 +97,6 @@ def test_market_order_price_formatting():
             slippage=test["slippage"],
         )
 
-        # Check result
         success = abs(formatted_price - test["expected_price"]) < 0.01
         symbol = "✓" if success else "✗"
 
@@ -122,20 +118,16 @@ def test_market_order_price_formatting():
     print("=" * 60)
     print("Market order price formatting test complete!")
 
-    # Test that the limit_order method is called with the correctly formatted price
     print("\nTesting full market_order flow:")
     print("-" * 60)
 
-    # Mock additional required methods
     api._market_price_context = MagicMock(
         return_value=(Decimal("2500"), Decimal("2499"), Decimal("2501"))
     )
     api.limit_order = MagicMock(return_value={"success": True})
 
-    # Call market_order
     api.market_order(asset="ETH", is_buy=True, sz=0.01, slippage=0.05)
 
-    # Check that limit_order was called with the correctly formatted price
     call_args = api.limit_order.call_args
     if call_args:
         limit_price = call_args.kwargs.get(

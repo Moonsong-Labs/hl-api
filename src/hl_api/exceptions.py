@@ -18,36 +18,6 @@ class AuthenticationError(HLProtocolError):
     pass
 
 
-class OrderError(HLProtocolError):
-    """Raised when order operations fail."""
-
-    def __init__(
-        self,
-        message: str,
-        order_id: str | None = None,
-        cloid: str | None = None,
-        details: dict | None = None,
-    ):
-        super().__init__(message, details)
-        self.order_id = order_id
-        self.cloid = cloid
-
-
-class TransferError(HLProtocolError):
-    """Raised when transfer operations fail."""
-
-    def __init__(
-        self,
-        message: str,
-        transfer_type: str | None = None,
-        amount: int | None = None,
-        details: dict | None = None,
-    ):
-        super().__init__(message, details)
-        self.transfer_type = transfer_type
-        self.amount = amount
-
-
 class NetworkError(HLProtocolError):
     """Raised when network/connection issues occur."""
 
@@ -78,7 +48,7 @@ class ValidationError(HLProtocolError):
         self.value = value
 
 
-class NotImplementedError(HLProtocolError):
+class MethodNotImplementedError(HLProtocolError):
     """Raised when a method is not yet implemented."""
 
     def __init__(self, method_name: str):

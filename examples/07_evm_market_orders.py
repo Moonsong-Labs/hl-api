@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
 from decimal import Decimal
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -39,12 +41,17 @@ def main() -> None:
     if not bridge_address:
         raise ValueError("BRIDGE_STRATEGY not found in environment variables")
 
+    proof_blob_path = Path(__file__).parent / "blobs" / "example_verification_blob.json"
+    with proof_blob_path.open("r", encoding="utf-8") as proof_file:
+        verification_blob = json.load(proof_file)
+
     client = HLProtocolEVM(
         private_key=private_key,
         hl_rpc_url=hl_rpc_url,
         mn_rpc_url=mn_rpc_url,
         hl_strategy_address=hl_strategy_address,
         bridge_strategy_address=bridge_address,
+        flexible_vault_proof_blob=verification_blob,
     )
 
     client.connect()

@@ -13,7 +13,7 @@ import requests
 from ..constants import Precompile
 from ..evm_utils import convert_perp_price, convert_spot_price
 from ..exceptions import NetworkError, ValidationError
-from ..utils import format_price_for_api, uint64_to_price
+from ..utils import format_price_for_api, from_uint64
 from .config import EVMClientConfig
 from .connections import Web3Connections
 
@@ -294,9 +294,9 @@ class AssetMetadataCache:
             )
 
         return (
-            uint64_to_price(mid_uint),
-            uint64_to_price(bid_uint) if bid_uint else None,
-            uint64_to_price(ask_uint) if ask_uint else None,
+            from_uint64(mid_uint, 8),
+            from_uint64(bid_uint, 8) if bid_uint else None,
+            from_uint64(ask_uint, 8) if ask_uint else None,
         )
 
     # ------------------------------------------------------------------

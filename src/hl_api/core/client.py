@@ -13,17 +13,8 @@ from hyperliquid.utils.types import Cloid
 
 from ..base import HLProtocolBase
 from ..exceptions import AuthenticationError, NetworkError
-from ..types import (
-    ApprovalResponse,
-    CancelResponse,
-    DelegateResponse,
-    FinalizeResponse,
-    OrderResponse,
-    SendResponse,
-    StakingResponse,
-    TransferResponse,
-)
-from ..utils import size_to_uint64
+from ..types import Response
+from ..utils import to_uint64
 from .config import CoreClientConfig
 from .connections import CoreConnections
 
@@ -100,7 +91,7 @@ class HLProtocolCore(HLProtocolBase):
         reduce_only: bool = False,
         tif: str = "GTC",
         cloid: str | None = None,
-    ) -> OrderResponse:
+    ) -> Response:
         self._ensure_connected()
 
         try:
@@ -120,7 +111,7 @@ class HLProtocolCore(HLProtocolBase):
             if result["status"] == "err":
                 logger.error("Order request failed: %s", result["response"])
 
-            return OrderResponse(
+            return Response(
                 success=True,
                 order_id=result.get("response", {})
                 .get("data", {})
@@ -133,7 +124,7 @@ class HLProtocolCore(HLProtocolBase):
 
         except Exception as exc:
             logger.error("Failed to place limit order: %s", exc)
-            return OrderResponse(success=False, cloid=cloid, error=str(exc))
+            return Response(success=False, cloid=cloid, error=str(exc))
 
     def get_market_price(self, asset: str) -> float:
         self._ensure_connected()
@@ -155,7 +146,7 @@ class HLProtocolCore(HLProtocolBase):
         sz: float,
         slippage: float = 0.05,
         cloid: str | None = None,
-    ) -> OrderResponse:
+    ) -> Response:
         self._ensure_connected()
 
         try:
@@ -174,7 +165,7 @@ class HLProtocolCore(HLProtocolBase):
             if result.get("status") == "err":
                 logger.error("Market order request failed: %s", result["response"])
 
-            return OrderResponse(
+            return Response(
                 success=True,
                 order_id=result.get("response", {})
                 .get("data", {})
@@ -188,7 +179,7 @@ class HLProtocolCore(HLProtocolBase):
         except Exception as exc:
             error_msg = str(exc)
             logger.error("Failed to place market order: %s", error_msg)
-            return OrderResponse(success=False, cloid=cloid, error=error_msg)
+            return Response(success=False, cloid=cloid, error=error_msg)
 
     def market_close_position(
         self,
@@ -196,7 +187,7 @@ class HLProtocolCore(HLProtocolBase):
         size: float | None = None,
         slippage: float = 0.005,
         cloid: str | None = None,
-    ) -> OrderResponse:
+    ) -> Response:
         self._ensure_connected()
 
         try:
@@ -214,7 +205,7 @@ class HLProtocolCore(HLProtocolBase):
             if result.get("status") == "err":
                 logger.error("Market close position request failed: %s", result["response"])
 
-            return OrderResponse(
+            return Response(
                 success=True,
                 order_id=result.get("response", {})
                 .get("data", {})
@@ -228,43 +219,43 @@ class HLProtocolCore(HLProtocolBase):
         except Exception as exc:
             error_msg = str(exc)
             logger.error("Failed to close position: %s", error_msg)
-            return OrderResponse(success=False, cloid=cloid, error=error_msg)
+            return Response(success=False, cloid=cloid, error=error_msg)
 
     # ------------------------------------------------------------------
     # Cancellations
     # ------------------------------------------------------------------
-    def cancel_order_by_oid(self, asset: str, order_id: int) -> CancelResponse:
+    def cancel_order_by_oid(self, asset: str, order_id: int) -> Response:
         self._ensure_connected()
 
         try:
             result = self._connections.exchange.cancel(asset, order_id)
-            return CancelResponse(success=True, cancelled_orders=1, raw_response=result)
+            return Response(success=True, cancelled_orders=1, raw_response=result)
         except Exception as exc:
             logger.error("Failed to cancel order by OID: %s", exc)
-            return CancelResponse(success=False, error=str(exc))
+            return Response(success=False, error=str(exc))
 
-    def cancel_order_by_cloid(self, asset: str, cloid: str) -> CancelResponse:
+    def cancel_order_by_cloid(self, asset: str, cloid: str) -> Response:
         self._ensure_connected()
 
         if not cloid.startswith("0x"):
-            return CancelResponse(
+            return Response(
                 success=False,
                 error=f"Invalid CLOID format: must start with 0x, got {cloid}",
             )
 
         try:
             result = self._connections.exchange.cancel_by_cloid(asset, Cloid(cloid))
-            return CancelResponse(success=True, cancelled_orders=1, raw_response=result)
+            return Response(success=True, cancelled_orders=1, raw_response=result)
         except Exception as exc:
             logger.error("Failed to cancel order by CLOID: %s", exc)
-            return CancelResponse(success=False, error=str(exc))
+            return Response(success=False, error=str(exc))
 
-    def cancel_order(self, asset: str, order_id: int | str) -> CancelResponse:
+    def cancel_order(self, asset: str, order_id: int | str) -> Response:
         if isinstance(order_id, int):
             return self.cancel_order_by_oid(asset, order_id)
         if isinstance(order_id, str):
             return self.cancel_order_by_cloid(asset, order_id)
-        return CancelResponse(
+        return Response(
             success=False,
             error=f"Invalid order_id type: {type(order_id).__name__}",
         )
@@ -272,43 +263,41 @@ class HLProtocolCore(HLProtocolBase):
     # ------------------------------------------------------------------
     # Transfers
     # ------------------------------------------------------------------
-    def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> TransferResponse:
+    def vault_transfer(self, vault: str, is_deposit: bool, usd: float) -> Response:
         self._ensure_connected()
 
         try:
             result = self._connections.exchange.vault_usd_transfer(
                 vault_address=vault,
                 is_deposit=is_deposit,
-                usd=size_to_uint64(usd, 6),
+                usd=to_uint64(usd, 6),
             )
-            return TransferResponse(success=True, amount=usd, raw_response=result)
+            return Response(success=True, amount=usd, raw_response=result)
         except Exception as exc:
             logger.error("Failed vault transfer: %s", exc)
-            return TransferResponse(success=False, error=str(exc))
+            return Response(success=False, error=str(exc))
 
-    def usd_class_transfer_to_perp(self, amount: float) -> TransferResponse:
+    def usd_class_transfer_to_perp(self, amount: float) -> Response:
         self._ensure_connected()
 
         try:
             result = self._connections.exchange.usd_class_transfer(amount=amount, to_perp=True)
-            return TransferResponse(success=True, amount=amount, raw_response=result)
+            return Response(success=True, amount=amount, raw_response=result)
         except Exception as exc:
             logger.error("Failed USD transfer to perp: %s", exc)
-            return TransferResponse(success=False, error=str(exc))
+            return Response(success=False, error=str(exc))
 
-    def usd_class_transfer_to_spot(self, amount: float) -> TransferResponse:
+    def usd_class_transfer_to_spot(self, amount: float) -> Response:
         self._ensure_connected()
 
         try:
             result = self._connections.exchange.usd_class_transfer(amount=amount, to_perp=False)
-            return TransferResponse(success=True, amount=amount, raw_response=result)
+            return Response(success=True, amount=amount, raw_response=result)
         except Exception as exc:
             logger.error("Failed USD transfer to spot: %s", exc)
-            return TransferResponse(success=False, error=str(exc))
+            return Response(success=False, error=str(exc))
 
-    def spot_send(
-        self, recipient: str, token: str, amount: float, destination: str
-    ) -> SendResponse:
+    def spot_send(self, recipient: str, token: str, amount: float, destination: str) -> Response:
         self._ensure_connected()
 
         try:
@@ -319,61 +308,17 @@ class HLProtocolCore(HLProtocolBase):
                 token=token,
                 amount=amount,
             )
-            return SendResponse(
-                success=True, recipient=recipient, amount=amount, raw_response=result
-            )
+            return Response(success=True, recipient=recipient, amount=amount, raw_response=result)
         except Exception as exc:
             logger.error("Failed spot send: %s", exc)
-            return SendResponse(success=False, error=str(exc))
+            return Response(success=False, error=str(exc))
 
-    def perp_send(self, recipient: str, amount: float, destination: str) -> SendResponse:
+    def perp_send(self, recipient: str, amount: float, destination: str) -> Response:
         self._ensure_connected()
 
         try:
             result = self._connections.exchange.usd_transfer(destination=recipient, amount=amount)
-            return SendResponse(
-                success=True, recipient=recipient, amount=amount, raw_response=result
-            )
+            return Response(success=True, recipient=recipient, amount=amount, raw_response=result)
         except Exception as exc:
             logger.error("Failed perp send: %s", exc)
-            return SendResponse(success=False, error=str(exc))
-
-    # ------------------------------------------------------------------
-    # Unsupported operations (SDK gaps)
-    # ------------------------------------------------------------------
-    def token_delegate(
-        self, validator: str, amount: float, is_undelegate: bool = False
-    ) -> DelegateResponse:
-        return DelegateResponse(
-            success=False, error="Token delegation not yet implemented for Core SDK"
-        )
-
-    def staking_deposit(self, amount: float) -> StakingResponse:
-        return StakingResponse(
-            success=False, error="Staking deposit not yet implemented for Core SDK"
-        )
-
-    def staking_withdraw(self, amount: float) -> StakingResponse:
-        return StakingResponse(
-            success=False, error="Staking withdrawal not yet implemented for Core SDK"
-        )
-
-    def finalize_subaccount(self, subaccount: str) -> FinalizeResponse:
-        return FinalizeResponse(
-            success=False, error="Subaccount finalization not yet implemented for Core SDK"
-        )
-
-    def approve_builder_fee(self, builder: str, fee: float, nonce: int) -> ApprovalResponse:
-        self._ensure_connected()
-
-        try:
-            result = self._connections.exchange.approve_builder_fee(
-                builder=builder,
-                max_fee_rate=str(fee),
-            )
-            return ApprovalResponse(
-                success=True, builder=builder, fee=fee, nonce=nonce, raw_response=result
-            )
-        except Exception as exc:
-            logger.error("Failed builder fee approval: %s", exc)
-            return ApprovalResponse(success=False, error=str(exc))
+            return Response(success=False, error=str(exc))

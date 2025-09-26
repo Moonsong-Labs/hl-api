@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import Any
 
 from eth_typing import HexStr
@@ -34,125 +34,38 @@ class TIF(IntEnum):
     IOC = 3  # Immediate Or Cancel
 
 
+class BridgeDirection(Enum):
+    """Bridge direction for CCTP operations."""
+
+    MAINNET_TO_HYPER = "mainnet_to_hyper"
+    HYPER_TO_MAINNET = "hyper_to_mainnet"
+
+
 @dataclass
-class OrderResponse:
-    """Response from placing an order."""
+class Response:
+    """Generic response for all protocol operations."""
 
     success: bool
+    transaction_hash: str | None = None
+    error: str | None = None
+    raw_response: dict[str, Any] | None = None
     order_id: str | None = None
     cloid: str | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class CancelResponse:
-    """Response from cancelling an order."""
-
-    success: bool
     cancelled_orders: int = 0
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class TransferResponse:
-    """Response from vault or USD class transfers."""
-
-    success: bool
-    amount: float | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class DelegateResponse:
-    """Response from token delegation."""
-
-    success: bool
-    validator: str | None = None
-    amount: int | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class StakingResponse:
-    """Response from staking operations."""
-
-    success: bool
-    amount: int | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class SendResponse:
-    """Response from spot/perp send operations."""
-
-    success: bool
+    amount: float | int | None = None
     recipient: str | None = None
-    amount: float | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class FinalizeResponse:
-    """Response from finalizing subaccount."""
-
-    success: bool
+    validator: str | None = None
     subaccount: str | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class WalletResponse:
-    """Response from adding API wallet."""
-
-    success: bool
     wallet: str | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class ApprovalResponse:
-    """Response from builder fee approval."""
-
-    success: bool
     builder: str | None = None
     fee: float | None = None
     nonce: int | None = None
-    transaction_hash: str | None = None
-    error: str | None = None
-    raw_response: dict | None = None
-
-
-@dataclass
-class BridgeResponse:
-    """Response from CCTPv2 bridge operations."""
-
-    success: bool
-    amount: float | None = None
     burn_tx_hash: str | None = None
     claim_tx_hash: str | None = None
     message: str | None = None
     attestation: str | None = None
-    error: str | None = None
-    raw_response: dict[str, Any] | None = None
 
 
-# Type aliases for clarity
 Price = int | float  # Will be converted to uint64 internally
 Size = int | float  # Will be converted to uint64 internally
 Address = str  # Ethereum address
@@ -164,8 +77,8 @@ class VerificationPayload:
     """Serializable representation of IVerifier.VerificationPayload."""
 
     verification_type: int
-    verification_data: bytes
-    proof: list[bytes]
+    verification_data: bytes | str
+    proof: list[bytes | str]
 
     @classmethod
     def default(cls) -> "VerificationPayload":
@@ -185,10 +98,10 @@ class VerificationPayload:
         )
 
         raw_data = data.get("verificationData") or data.get("verification_data") or b""
-        verification_data = _coerce_bytes(raw_data)
+        verification_data = _normalise_payload_value(raw_data)
 
         proof_items = data.get("proof") or data.get("proofs") or []
-        proof = [_coerce_bytes(item) for item in _iterable(proof_items)]
+        proof = [_normalise_payload_value(item) for item in _iterable(proof_items)]
 
         return cls(
             verification_type=verification_type, verification_data=verification_data, proof=proof
@@ -197,11 +110,15 @@ class VerificationPayload:
     def as_tuple(self) -> tuple[int, bytes, list[bytes]]:
         """Return the payload as tuple consumable by web3."""
 
-        return self.verification_type, self.verification_data, list(self.proof)
+        return (
+            self.verification_type,
+            _ensure_bytes(self.verification_data),
+            [_ensure_bytes(item) for item in self.proof],
+        )
 
 
-def _coerce_bytes(value: Any) -> bytes:
-    """Convert arbitrary values (hex/base64/iterables) into bytes."""
+def _normalise_payload_value(value: Any) -> bytes | str:
+    """Return bytes or hex string without unnecessary conversion."""
 
     if value is None:
         return b""
@@ -215,14 +132,14 @@ def _coerce_bytes(value: Any) -> bytes:
     if isinstance(value, str):
         lower = value.lower()
         if lower.startswith("0x"):
-            return Web3.to_bytes(hexstr=HexStr(value))
+            return lower
 
         try:
             import base64
 
             return base64.b64decode(value, validate=False)
         except Exception:
-            return value.encode("utf-8")
+            return value
 
     if isinstance(value, Iterable):
         return bytes(value)
@@ -231,7 +148,18 @@ def _coerce_bytes(value: Any) -> bytes:
         length = (value.bit_length() + 7) // 8 or 1
         return value.to_bytes(length, byteorder="big")
 
-    raise TypeError(f"Unsupported type for byte coercion: {type(value)!r}")
+    raise TypeError(f"Unsupported type for payload coercion: {type(value)!r}")
+
+
+def _ensure_bytes(value: bytes | str) -> bytes:
+    if isinstance(value, bytes):
+        return value
+
+    lower = value.lower()
+    if lower.startswith("0x"):
+        return Web3.to_bytes(hexstr=HexStr(lower))
+
+    return value.encode("utf-8")
 
 
 def _iterable(value: Any) -> Iterable:
