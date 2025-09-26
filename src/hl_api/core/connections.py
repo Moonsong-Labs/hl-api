@@ -9,7 +9,7 @@ import eth_account
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 
-from ..exceptions import AuthenticationError, NetworkError
+from ..exceptions import NetworkError
 from .config import CoreClientConfig
 
 logger = logging.getLogger(__name__)
