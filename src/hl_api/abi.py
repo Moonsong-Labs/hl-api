@@ -1,7 +1,6 @@
 from typing import Any
 
 HyperliquidStrategy_abi: list[dict[str, Any]] = [
-    {"type": "constructor", "inputs": [], "stateMutability": "nonpayable"},
     {
         "type": "function",
         "name": "CURATOR_ROLE",
@@ -101,7 +100,7 @@ HyperliquidStrategy_abi: list[dict[str, Any]] = [
     },
     {
         "type": "function",
-        "name": "bridgeUSDCViaCCTPv2",
+        "name": "bridgeUsdcViaCctpV2",
         "inputs": [
             {"name": "amount", "type": "uint256", "internalType": "uint256"},
             {"name": "maxFee", "type": "uint256", "internalType": "uint256"},
@@ -174,21 +173,21 @@ HyperliquidStrategy_abi: list[dict[str, Any]] = [
     },
     {
         "type": "function",
-        "name": "cctpv2DestinationDomain",
+        "name": "cctpV2DestinationDomain",
         "inputs": [],
         "outputs": [{"name": "", "type": "uint32", "internalType": "uint32"}],
         "stateMutability": "view",
     },
     {
         "type": "function",
-        "name": "cctpv2MessageTransmitter",
+        "name": "cctpV2MessageTransmitter",
         "inputs": [],
         "outputs": [{"name": "", "type": "address", "internalType": "address"}],
         "stateMutability": "view",
     },
     {
         "type": "function",
-        "name": "cctpv2TokenMessenger",
+        "name": "cctpV2TokenMessenger",
         "inputs": [],
         "outputs": [{"name": "", "type": "address", "internalType": "address"}],
         "stateMutability": "view",
@@ -257,7 +256,7 @@ HyperliquidStrategy_abi: list[dict[str, Any]] = [
     },
     {
         "type": "function",
-        "name": "disableCCTPv2",
+        "name": "disableCctpV2",
         "inputs": [],
         "outputs": [],
         "stateMutability": "nonpayable",
@@ -271,7 +270,7 @@ HyperliquidStrategy_abi: list[dict[str, Any]] = [
     },
     {
         "type": "function",
-        "name": "enableCCTPv2",
+        "name": "enableCctpV2",
         "inputs": [],
         "outputs": [],
         "stateMutability": "nonpayable",
@@ -345,35 +344,58 @@ HyperliquidStrategy_abi: list[dict[str, Any]] = [
         "type": "function",
         "name": "initialize",
         "inputs": [
+            {"name": "subvault", "type": "address", "internalType": "address"},
+            {"name": "admin", "type": "address", "internalType": "address"},
+            {"name": "guardian", "type": "address", "internalType": "address"},
+            {"name": "curator", "type": "address", "internalType": "address"},
+            {"name": "bridgeRecipient", "type": "address", "internalType": "address"},
+            {"name": "hypeTokenIndex_", "type": "uint64", "internalType": "uint64"},
             {
-                "name": "p",
+                "name": "cctpV2Config",
                 "type": "tuple",
-                "internalType": "struct HyperliquidStrategy.HyperliquidInitParams",
+                "internalType": "struct CctpV2BridgeModule.CctpV2Config",
                 "components": [
-                    {"name": "subvault", "type": "address", "internalType": "address"},
-                    {"name": "admin", "type": "address", "internalType": "address"},
-                    {"name": "guardian", "type": "address", "internalType": "address"},
-                    {"name": "curator", "type": "address", "internalType": "address"},
-                    {"name": "bridgeRecipient", "type": "address", "internalType": "address"},
-                    {"name": "deBridgeTakeChainId", "type": "uint256", "internalType": "uint256"},
-                    {"name": "hypeTokenIndex", "type": "uint64", "internalType": "uint64"},
                     {"name": "usdc", "type": "address", "internalType": "address"},
-                    {"name": "cctpv2DestinationDomain", "type": "uint32", "internalType": "uint32"},
-                    {"name": "cctpv2TokenMessenger", "type": "address", "internalType": "address"},
-                    {
-                        "name": "cctpv2MessageTransmitter",
-                        "type": "address",
-                        "internalType": "address",
-                    },
+                    {"name": "destinationDomain", "type": "uint32", "internalType": "uint32"},
+                    {"name": "tokenMessenger", "type": "address", "internalType": "address"},
+                    {"name": "messageTransmitter", "type": "address", "internalType": "address"},
                 ],
-            }
+            },
         ],
         "outputs": [],
         "stateMutability": "nonpayable",
     },
     {
         "type": "function",
-        "name": "isCCTPv2Enabled",
+        "name": "initializeDeBridge",
+        "inputs": [{"name": "takeChainId", "type": "uint256", "internalType": "uint256"}],
+        "outputs": [],
+        "stateMutability": "nonpayable",
+    },
+    {
+        "type": "function",
+        "name": "isCctpV2Enabled",
+        "inputs": [],
+        "outputs": [{"name": "", "type": "bool", "internalType": "bool"}],
+        "stateMutability": "view",
+    },
+    {
+        "type": "function",
+        "name": "isDeBridgeEnabled",
+        "inputs": [],
+        "outputs": [{"name": "", "type": "bool", "internalType": "bool"}],
+        "stateMutability": "view",
+    },
+    {
+        "type": "function",
+        "name": "pause",
+        "inputs": [],
+        "outputs": [],
+        "stateMutability": "nonpayable",
+    },
+    {
+        "type": "function",
+        "name": "paused",
         "inputs": [],
         "outputs": [{"name": "", "type": "bool", "internalType": "bool"}],
         "stateMutability": "view",
@@ -443,12 +465,12 @@ HyperliquidStrategy_abi: list[dict[str, Any]] = [
     },
     {
         "type": "function",
-        "name": "receiveUSDCViaCCTPv2",
+        "name": "receiveUsdcViaCctpV2",
         "inputs": [
             {"name": "message", "type": "bytes", "internalType": "bytes"},
             {"name": "attestation", "type": "bytes", "internalType": "bytes"},
         ],
-        "outputs": [],
+        "outputs": [{"name": "", "type": "bool", "internalType": "bool"}],
         "stateMutability": "nonpayable",
     },
     {
@@ -533,6 +555,13 @@ HyperliquidStrategy_abi: list[dict[str, Any]] = [
     },
     {
         "type": "function",
+        "name": "unpause",
+        "inputs": [],
+        "outputs": [],
+        "stateMutability": "nonpayable",
+    },
+    {
+        "type": "function",
         "name": "upgradeToAndCall",
         "inputs": [
             {"name": "newImplementation", "type": "address", "internalType": "address"},
@@ -603,8 +632,97 @@ HyperliquidStrategy_abi: list[dict[str, Any]] = [
     },
     {
         "type": "event",
+        "name": "CctpV2UsdcBridgeInitiated",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {
+                "name": "destinationDomain",
+                "type": "uint32",
+                "indexed": True,
+                "internalType": "uint32",
+            },
+            {"name": "amount", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "maxFee", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {
+                "name": "minFinalityThreshold",
+                "type": "uint32",
+                "indexed": False,
+                "internalType": "uint32",
+            },
+            {"name": "recipient", "type": "address", "indexed": False, "internalType": "address"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "CctpV2UsdcMessageReceived",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "messageHash", "type": "bytes32", "indexed": True, "internalType": "bytes32"},
+            {
+                "name": "attestationHash",
+                "type": "bytes32",
+                "indexed": True,
+                "internalType": "bytes32",
+            },
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
         "name": "DeBridgeStatusUpdated",
         "inputs": [{"name": "enabled", "type": "bool", "indexed": False, "internalType": "bool"}],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "DlnErc20BridgeInitiated",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "salt", "type": "uint64", "indexed": True, "internalType": "uint64"},
+            {"name": "orderId", "type": "bytes32", "indexed": True, "internalType": "bytes32"},
+            {"name": "giveToken", "type": "address", "indexed": False, "internalType": "address"},
+            {"name": "giveAmount", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "takeToken", "type": "address", "indexed": False, "internalType": "address"},
+            {"name": "takeAmount", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "takeChainId", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "recipient", "type": "address", "indexed": False, "internalType": "address"},
+            {"name": "nativeFee", "type": "uint256", "indexed": False, "internalType": "uint256"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "DlnNativeBridgeInitiated",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "salt", "type": "uint64", "indexed": True, "internalType": "uint64"},
+            {"name": "orderId", "type": "bytes32", "indexed": True, "internalType": "bytes32"},
+            {"name": "giveAmount", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "takeToken", "type": "address", "indexed": False, "internalType": "address"},
+            {"name": "takeAmount", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "takeChainId", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "recipient", "type": "address", "indexed": False, "internalType": "address"},
+            {"name": "nativeFee", "type": "uint256", "indexed": False, "internalType": "uint256"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "HypeDepositedToCore",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "amount", "type": "uint256", "indexed": False, "internalType": "uint256"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "HypeWithdrawnToEvm",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "amount", "type": "uint64", "indexed": False, "internalType": "uint64"},
+        ],
         "anonymous": False,
     },
     {
@@ -612,6 +730,71 @@ HyperliquidStrategy_abi: list[dict[str, Any]] = [
         "name": "Initialized",
         "inputs": [
             {"name": "version", "type": "uint64", "indexed": False, "internalType": "uint64"}
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "LimitBuyOrderPlaced",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "asset", "type": "uint32", "indexed": True, "internalType": "uint32"},
+            {"name": "cloid", "type": "uint128", "indexed": True, "internalType": "uint128"},
+            {"name": "limitPx", "type": "uint64", "indexed": False, "internalType": "uint64"},
+            {"name": "sz", "type": "uint64", "indexed": False, "internalType": "uint64"},
+            {"name": "reduceOnly", "type": "bool", "indexed": False, "internalType": "bool"},
+            {"name": "tif", "type": "uint8", "indexed": False, "internalType": "uint8"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "LimitSellOrderPlaced",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "asset", "type": "uint32", "indexed": True, "internalType": "uint32"},
+            {"name": "cloid", "type": "uint128", "indexed": True, "internalType": "uint128"},
+            {"name": "limitPx", "type": "uint64", "indexed": False, "internalType": "uint64"},
+            {"name": "sz", "type": "uint64", "indexed": False, "internalType": "uint64"},
+            {"name": "reduceOnly", "type": "bool", "indexed": False, "internalType": "bool"},
+            {"name": "tif", "type": "uint8", "indexed": False, "internalType": "uint8"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "OrderCancelledByCloid",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "asset", "type": "uint32", "indexed": True, "internalType": "uint32"},
+            {"name": "cloid", "type": "uint128", "indexed": True, "internalType": "uint128"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "OrderCancelledByOid",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "asset", "type": "uint32", "indexed": True, "internalType": "uint32"},
+            {"name": "oid", "type": "uint64", "indexed": True, "internalType": "uint64"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "Paused",
+        "inputs": [
+            {"name": "account", "type": "address", "indexed": False, "internalType": "address"}
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "PerpToSpotTransferred",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "ntl", "type": "uint64", "indexed": False, "internalType": "uint64"},
         ],
         "anonymous": False,
     },
@@ -647,6 +830,50 @@ HyperliquidStrategy_abi: list[dict[str, Any]] = [
             {"name": "role", "type": "bytes32", "indexed": True, "internalType": "bytes32"},
             {"name": "account", "type": "address", "indexed": True, "internalType": "address"},
             {"name": "sender", "type": "address", "indexed": True, "internalType": "address"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "SpotToPerpTransferred",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "ntl", "type": "uint64", "indexed": False, "internalType": "uint64"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "TokenDepositedToCore",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "token", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "tokenIndex", "type": "uint64", "indexed": True, "internalType": "uint64"},
+            {
+                "name": "systemAddress",
+                "type": "address",
+                "indexed": False,
+                "internalType": "address",
+            },
+            {"name": "amount", "type": "uint256", "indexed": False, "internalType": "uint256"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "TokenWithdrawnToEvm",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "tokenIndex", "type": "uint64", "indexed": True, "internalType": "uint64"},
+            {"name": "amount", "type": "uint64", "indexed": False, "internalType": "uint64"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "Unpaused",
+        "inputs": [
+            {"name": "account", "type": "address", "indexed": False, "internalType": "address"}
         ],
         "anonymous": False,
     },
@@ -690,6 +917,8 @@ HyperliquidStrategy_abi: list[dict[str, Any]] = [
     {"type": "error", "name": "ERC1967NonPayable", "inputs": []},
     {"type": "error", "name": "EmptyAttestation", "inputs": []},
     {"type": "error", "name": "EmptyMessage", "inputs": []},
+    {"type": "error", "name": "EnforcedPause", "inputs": []},
+    {"type": "error", "name": "ExpectedPause", "inputs": []},
     {"type": "error", "name": "FailedCall", "inputs": []},
     {"type": "error", "name": "InvalidChainId", "inputs": []},
     {"type": "error", "name": "InvalidInitialization", "inputs": []},
@@ -712,7 +941,6 @@ HyperliquidStrategy_abi: list[dict[str, Any]] = [
 ]
 
 HyperliquidBridgeStrategy_abi = [
-    {"type": "constructor", "inputs": [], "stateMutability": "nonpayable"},
     {
         "type": "function",
         "name": "CURATOR_ROLE",
@@ -812,7 +1040,7 @@ HyperliquidBridgeStrategy_abi = [
     },
     {
         "type": "function",
-        "name": "bridgeUSDCViaCCTPv2",
+        "name": "bridgeUsdcViaCctpV2",
         "inputs": [
             {"name": "amount", "type": "uint256", "internalType": "uint256"},
             {"name": "maxFee", "type": "uint256", "internalType": "uint256"},
@@ -837,21 +1065,21 @@ HyperliquidBridgeStrategy_abi = [
     },
     {
         "type": "function",
-        "name": "cctpv2DestinationDomain",
+        "name": "cctpV2DestinationDomain",
         "inputs": [],
         "outputs": [{"name": "", "type": "uint32", "internalType": "uint32"}],
         "stateMutability": "view",
     },
     {
         "type": "function",
-        "name": "cctpv2MessageTransmitter",
+        "name": "cctpV2MessageTransmitter",
         "inputs": [],
         "outputs": [{"name": "", "type": "address", "internalType": "address"}],
         "stateMutability": "view",
     },
     {
         "type": "function",
-        "name": "cctpv2TokenMessenger",
+        "name": "cctpV2TokenMessenger",
         "inputs": [],
         "outputs": [{"name": "", "type": "address", "internalType": "address"}],
         "stateMutability": "view",
@@ -865,7 +1093,7 @@ HyperliquidBridgeStrategy_abi = [
     },
     {
         "type": "function",
-        "name": "disableCCTPv2",
+        "name": "disableCctpV2",
         "inputs": [],
         "outputs": [],
         "stateMutability": "nonpayable",
@@ -879,7 +1107,7 @@ HyperliquidBridgeStrategy_abi = [
     },
     {
         "type": "function",
-        "name": "enableCCTPv2",
+        "name": "enableCctpV2",
         "inputs": [],
         "outputs": [],
         "stateMutability": "nonpayable",
@@ -946,34 +1174,57 @@ HyperliquidBridgeStrategy_abi = [
         "type": "function",
         "name": "initialize",
         "inputs": [
+            {"name": "subvault", "type": "address", "internalType": "address"},
+            {"name": "admin", "type": "address", "internalType": "address"},
+            {"name": "guardian", "type": "address", "internalType": "address"},
+            {"name": "curator", "type": "address", "internalType": "address"},
+            {"name": "bridgeRecipient", "type": "address", "internalType": "address"},
             {
-                "name": "p",
+                "name": "cctpV2Config",
                 "type": "tuple",
-                "internalType": "struct HyperliquidBridgeStrategy.HyperliquidBridgeInitParams",
+                "internalType": "struct CctpV2BridgeModule.CctpV2Config",
                 "components": [
-                    {"name": "subvault", "type": "address", "internalType": "address"},
-                    {"name": "admin", "type": "address", "internalType": "address"},
-                    {"name": "guardian", "type": "address", "internalType": "address"},
-                    {"name": "curator", "type": "address", "internalType": "address"},
-                    {"name": "bridgeRecipient", "type": "address", "internalType": "address"},
-                    {"name": "deBridgeTakeChainId", "type": "uint256", "internalType": "uint256"},
                     {"name": "usdc", "type": "address", "internalType": "address"},
-                    {"name": "cctpv2DestinationDomain", "type": "uint32", "internalType": "uint32"},
-                    {"name": "cctpv2TokenMessenger", "type": "address", "internalType": "address"},
-                    {
-                        "name": "cctpv2MessageTransmitter",
-                        "type": "address",
-                        "internalType": "address",
-                    },
+                    {"name": "destinationDomain", "type": "uint32", "internalType": "uint32"},
+                    {"name": "tokenMessenger", "type": "address", "internalType": "address"},
+                    {"name": "messageTransmitter", "type": "address", "internalType": "address"},
                 ],
-            }
+            },
         ],
         "outputs": [],
         "stateMutability": "nonpayable",
     },
     {
         "type": "function",
-        "name": "isCCTPv2Enabled",
+        "name": "initializeDeBridge",
+        "inputs": [{"name": "takeChainId", "type": "uint256", "internalType": "uint256"}],
+        "outputs": [],
+        "stateMutability": "nonpayable",
+    },
+    {
+        "type": "function",
+        "name": "isCctpV2Enabled",
+        "inputs": [],
+        "outputs": [{"name": "", "type": "bool", "internalType": "bool"}],
+        "stateMutability": "view",
+    },
+    {
+        "type": "function",
+        "name": "isDeBridgeEnabled",
+        "inputs": [],
+        "outputs": [{"name": "", "type": "bool", "internalType": "bool"}],
+        "stateMutability": "view",
+    },
+    {
+        "type": "function",
+        "name": "pause",
+        "inputs": [],
+        "outputs": [],
+        "stateMutability": "nonpayable",
+    },
+    {
+        "type": "function",
+        "name": "paused",
         "inputs": [],
         "outputs": [{"name": "", "type": "bool", "internalType": "bool"}],
         "stateMutability": "view",
@@ -987,12 +1238,12 @@ HyperliquidBridgeStrategy_abi = [
     },
     {
         "type": "function",
-        "name": "receiveUSDCViaCCTPv2",
+        "name": "receiveUsdcViaCctpV2",
         "inputs": [
             {"name": "message", "type": "bytes", "internalType": "bytes"},
             {"name": "attestation", "type": "bytes", "internalType": "bytes"},
         ],
-        "outputs": [],
+        "outputs": [{"name": "", "type": "bool", "internalType": "bool"}],
         "stateMutability": "nonpayable",
     },
     {
@@ -1031,6 +1282,13 @@ HyperliquidBridgeStrategy_abi = [
     },
     {
         "type": "function",
+        "name": "unpause",
+        "inputs": [],
+        "outputs": [],
+        "stateMutability": "nonpayable",
+    },
+    {
+        "type": "function",
         "name": "upgradeToAndCall",
         "inputs": [
             {"name": "newImplementation", "type": "address", "internalType": "address"},
@@ -1054,8 +1312,79 @@ HyperliquidBridgeStrategy_abi = [
     },
     {
         "type": "event",
+        "name": "CctpV2UsdcBridgeInitiated",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {
+                "name": "destinationDomain",
+                "type": "uint32",
+                "indexed": True,
+                "internalType": "uint32",
+            },
+            {"name": "amount", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "maxFee", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {
+                "name": "minFinalityThreshold",
+                "type": "uint32",
+                "indexed": False,
+                "internalType": "uint32",
+            },
+            {"name": "recipient", "type": "address", "indexed": False, "internalType": "address"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "CctpV2UsdcMessageReceived",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "messageHash", "type": "bytes32", "indexed": True, "internalType": "bytes32"},
+            {
+                "name": "attestationHash",
+                "type": "bytes32",
+                "indexed": True,
+                "internalType": "bytes32",
+            },
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
         "name": "DeBridgeStatusUpdated",
         "inputs": [{"name": "enabled", "type": "bool", "indexed": False, "internalType": "bool"}],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "DlnErc20BridgeInitiated",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "salt", "type": "uint64", "indexed": True, "internalType": "uint64"},
+            {"name": "orderId", "type": "bytes32", "indexed": True, "internalType": "bytes32"},
+            {"name": "giveToken", "type": "address", "indexed": False, "internalType": "address"},
+            {"name": "giveAmount", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "takeToken", "type": "address", "indexed": False, "internalType": "address"},
+            {"name": "takeAmount", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "takeChainId", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "recipient", "type": "address", "indexed": False, "internalType": "address"},
+            {"name": "nativeFee", "type": "uint256", "indexed": False, "internalType": "uint256"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "DlnNativeBridgeInitiated",
+        "inputs": [
+            {"name": "curator", "type": "address", "indexed": True, "internalType": "address"},
+            {"name": "salt", "type": "uint64", "indexed": True, "internalType": "uint64"},
+            {"name": "orderId", "type": "bytes32", "indexed": True, "internalType": "bytes32"},
+            {"name": "giveAmount", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "takeToken", "type": "address", "indexed": False, "internalType": "address"},
+            {"name": "takeAmount", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "takeChainId", "type": "uint256", "indexed": False, "internalType": "uint256"},
+            {"name": "recipient", "type": "address", "indexed": False, "internalType": "address"},
+            {"name": "nativeFee", "type": "uint256", "indexed": False, "internalType": "uint256"},
+        ],
         "anonymous": False,
     },
     {
@@ -1063,6 +1392,14 @@ HyperliquidBridgeStrategy_abi = [
         "name": "Initialized",
         "inputs": [
             {"name": "version", "type": "uint64", "indexed": False, "internalType": "uint64"}
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "Paused",
+        "inputs": [
+            {"name": "account", "type": "address", "indexed": False, "internalType": "address"}
         ],
         "anonymous": False,
     },
@@ -1098,6 +1435,14 @@ HyperliquidBridgeStrategy_abi = [
             {"name": "role", "type": "bytes32", "indexed": True, "internalType": "bytes32"},
             {"name": "account", "type": "address", "indexed": True, "internalType": "address"},
             {"name": "sender", "type": "address", "indexed": True, "internalType": "address"},
+        ],
+        "anonymous": False,
+    },
+    {
+        "type": "event",
+        "name": "Unpaused",
+        "inputs": [
+            {"name": "account", "type": "address", "indexed": False, "internalType": "address"}
         ],
         "anonymous": False,
     },
@@ -1141,6 +1486,8 @@ HyperliquidBridgeStrategy_abi = [
     {"type": "error", "name": "ERC1967NonPayable", "inputs": []},
     {"type": "error", "name": "EmptyAttestation", "inputs": []},
     {"type": "error", "name": "EmptyMessage", "inputs": []},
+    {"type": "error", "name": "EnforcedPause", "inputs": []},
+    {"type": "error", "name": "ExpectedPause", "inputs": []},
     {"type": "error", "name": "FailedCall", "inputs": []},
     {"type": "error", "name": "InvalidChainId", "inputs": []},
     {"type": "error", "name": "InvalidInitialization", "inputs": []},

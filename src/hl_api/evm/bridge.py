@@ -261,7 +261,7 @@ class CCTPBridge:
         payloads = self._resolve_cctp_verification_payloads(direction, amount_units)
 
         logger.debug("Stage CCTP [%s]: submit burn transaction", direction)
-        burn_tx = source_contract.functions.bridgeUSDCViaCCTPv2(
+        burn_tx = source_contract.functions.bridgeUsdcViaCctpV2(
             amount_units,
             max_fee,
             finality_threshold,
@@ -310,7 +310,7 @@ class CCTPBridge:
             )
 
         logger.debug("Stage CCTP [%s]: submit claim transaction", direction)
-        claim_tx = destination_contract.functions.receiveUSDCViaCCTPv2(
+        claim_tx = destination_contract.functions.receiveUsdcViaCctpV2(
             message, attestation
         ).transact()
 
