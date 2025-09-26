@@ -15,13 +15,13 @@ from web3.contract import Contract
 from web3.types import ChecksumAddress
 
 from ..base import HLProtocolBase
-from ..constants import Precompile
 from ..exceptions import NetworkError, ValidationError
 from ..types import (
     Response,
     VerificationPayload,
 )
 from ..utils import (
+    Precompile,
     cloid_to_uint128,
     encode_tif,
     format_price_for_api,
@@ -539,6 +539,74 @@ class HLProtocolEVM(HLProtocolBase):
         )
         return self._execute_transaction(tx_request, "usd_class_transfer_to_spot")
 
+    def deposit_token_to_core(
+        self,
+        token_address: str,
+        token_index: int,
+        amount: float,
+        verification_payload: VerificationPayload | None = None,
+    ) -> Response:
+        token_decimals = self._get_erc20_decimals(token_address)
+        amount_wei = to_uint64(amount, token_decimals)
+
+        context = {
+            "token": token_address,
+            "token_index": token_index,
+            "amount": amount_wei,
+        }
+
+        json_name = self._get_json_name_for_chain("hyperliquid")
+        payload = verification_payload or self._resolve_verification_payload(
+            "HyperliquidStrategy.depositTokenToCore(address,uint64,uint256,VerificationPayload)",
+            json_name,
+            context,
+        )
+
+        args = [token_address, token_index, amount_wei, payload.as_tuple()]
+
+        tx_request = TxRequest(
+            function="depositTokenToCore",
+            args=args,
+            action="deposit_token_to_core",
+            context=context,
+            response_class=Response,
+            response_fields={"amount": amount},
+        )
+        return self._execute_transaction(tx_request, "deposit_token_to_core")
+
+    def withdraw_token_to_evm(
+        self,
+        token_index: int,
+        amount: float,
+        verification_payload: VerificationPayload | None = None,
+    ) -> Response:
+        wei_decimals = self._get_token_wei_decimals(token_index)
+        amount_uint = to_uint64(amount, wei_decimals)
+
+        context = {
+            "token_index": token_index,
+            "amount": amount_uint,
+        }
+
+        json_name = self._get_json_name_for_chain("hyperliquid")
+        payload = verification_payload or self._resolve_verification_payload(
+            "HyperliquidStrategy.withdrawTokenToEvm(uint64,uint64,VerificationPayload)",
+            json_name,
+            context,
+        )
+
+        args = [token_index, amount_uint, payload.as_tuple()]
+
+        tx_request = TxRequest(
+            function="withdrawTokenToEvm",
+            args=args,
+            action="withdraw_token_to_evm",
+            context=context,
+            response_class=Response,
+            response_fields={"amount": amount, "token_index": token_index},
+        )
+        return self._execute_transaction(tx_request, "withdraw_token_to_evm")
+
     # ------------------------------------------------------------------
     # Market data helpers
     # ------------------------------------------------------------------
@@ -793,6 +861,47 @@ class HLProtocolEVM(HLProtocolBase):
             action=action,
             context=context,
         )
+
+    # ------------------------------------------------------------------
+    # Token helpers
+    # ------------------------------------------------------------------
+    def _get_erc20_decimals(self, token_address: str) -> int:
+        abi = [
+            {
+                "constant": True,
+                "inputs": [],
+                "name": "decimals",
+                "outputs": [{"name": "", "type": "uint8"}],
+                "type": "function",
+            }
+        ]
+
+        web3 = self._connections.hyperliquid_web3
+        contract = web3.eth.contract(address=Web3.to_checksum_address(token_address), abi=abi)
+
+        return contract.functions.decimals().call()
+
+    def _get_token_wei_decimals(self, token_index: int) -> int:
+        try:
+            from ..utils.token_metadata import get_token_info
+
+            testnet = "testnet" in self._config.hl_rpc_url
+            tokens = get_token_info(testnet=testnet)
+
+            for token in tokens:
+                if token.get("index") == token_index:
+                    wei_decimals = token.get("weiDecimals")
+                    if wei_decimals is not None:
+                        return int(wei_decimals)
+
+            logger.warning(f"weiDecimals not found for token index {token_index}, defaulting to 8")
+            raise ValueError("Token index not found in metadata")
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to get weiDecimals for token {token_index}: {e}, defaulting to 8"
+            )
+            raise e
 
     # ------------------------------------------------------------------
     # Connection-backed properties

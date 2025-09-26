@@ -16,8 +16,8 @@ from web3.middleware import SignAndSendRawMiddlewareBuilder
 from web3.types import ChecksumAddress
 
 from ..abi import HyperliquidBridgeStrategy_abi, HyperliquidStrategy_abi
-from ..constants import Precompile
 from ..exceptions import NetworkError, ValidationError
+from ..utils import Precompile
 from .config import EVMClientConfig
 
 logger = logging.getLogger(__name__)

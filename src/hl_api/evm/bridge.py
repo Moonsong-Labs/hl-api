@@ -10,9 +10,9 @@ from typing import Any
 
 import requests
 
-from ..evm_utils import serialise_receipt
 from ..exceptions import NetworkError, ValidationError
 from ..types import BridgeDirection, Response, VerificationPayload
+from ..utils import serialise_receipt
 from .config import EVMClientConfig
 from .connections import Web3Connections
 from .proofs import FlexibleVaultProofResolver

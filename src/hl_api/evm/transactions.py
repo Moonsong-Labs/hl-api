@@ -6,8 +6,8 @@ import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from ..evm_utils import serialise_receipt
 from ..exceptions import NetworkError
+from ..utils import serialise_receipt
 from .connections import Web3Connections
 
 logger = logging.getLogger(__name__)
