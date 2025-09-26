@@ -291,7 +291,7 @@ if __name__ == "__main__":
         test_obj.test_validation_errors()
         print("✓ Validation Errors")
         passed += 1
-    except:
+    except Exception:
         print("✓ Validation Errors (pytest not available, skipping)")
 
     print("=" * 60)

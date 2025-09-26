@@ -10,10 +10,14 @@ from typing import Any, cast
 
 import requests
 
-from ..constants import Precompile
-from ..evm_utils import convert_perp_price, convert_spot_price
 from ..exceptions import NetworkError, ValidationError
-from ..utils import format_price_for_api, from_uint64
+from ..utils import (
+    Precompile,
+    convert_perp_price,
+    convert_spot_price,
+    format_price_for_api,
+    from_uint64,
+)
 from .config import EVMClientConfig
 from .connections import Web3Connections
 

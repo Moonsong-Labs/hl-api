@@ -10,9 +10,9 @@ from typing import Any
 
 import requests
 
-from ..evm_utils import serialise_receipt
 from ..exceptions import NetworkError, ValidationError
 from ..types import BridgeDirection, Response, VerificationPayload
+from ..utils import serialise_receipt
 from .config import EVMClientConfig
 from .connections import Web3Connections
 from .proofs import FlexibleVaultProofResolver
@@ -261,22 +261,12 @@ class CCTPBridge:
         payloads = self._resolve_cctp_verification_payloads(direction, amount_units)
 
         logger.debug("Stage CCTP [%s]: submit burn transaction", direction)
-        try:
-            burn_tx = source_contract.functions.bridgeUSDCViaCCTPv2(
-                amount_units,
-                max_fee,
-                finality_threshold,
-                payloads,
-            ).transact()
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.exception("Failed to submit CCTP burn on %s", direction)
-            logger.debug("Stage CCTP [%s]: bridge aborted (reason=%s)", direction, str(exc))
-            return Response(
-                success=False,
-                amount=amount_float,
-                error=str(exc),
-                raw_response=raw_context,
-            )
+        burn_tx = source_contract.functions.bridgeUSDCViaCCTPv2(
+            amount_units,
+            max_fee,
+            finality_threshold,
+            payloads,
+        ).transact()
 
         burn_tx_hash = burn_tx.to_0x_hex()
         logger.debug("Stage CCTP [%s]: burn submitted (tx=%s)", direction, burn_tx_hash)
@@ -320,22 +310,9 @@ class CCTPBridge:
             )
 
         logger.debug("Stage CCTP [%s]: submit claim transaction", direction)
-        try:
-            claim_tx = destination_contract.functions.receiveUSDCViaCCTPv2(
-                message, attestation
-            ).transact()
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.exception("Failed to submit CCTP claim on %s", direction)
-            logger.debug("Stage CCTP [%s]: bridge aborted (reason=%s)", direction, str(exc))
-            return Response(
-                success=False,
-                amount=amount_float,
-                burn_tx_hash=burn_tx_hash,
-                message=message,
-                attestation=attestation,
-                error=str(exc),
-                raw_response=raw_context,
-            )
+        claim_tx = destination_contract.functions.receiveUSDCViaCCTPv2(
+            message, attestation
+        ).transact()
 
         claim_tx_hash = claim_tx.to_0x_hex()
         logger.debug("Stage CCTP [%s]: claim submitted (tx=%s)", direction, claim_tx_hash)

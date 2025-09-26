@@ -15,13 +15,13 @@ from web3.contract import Contract
 from web3.types import ChecksumAddress
 
 from ..base import HLProtocolBase
-from ..constants import Precompile
 from ..exceptions import NetworkError, ValidationError
 from ..types import (
     Response,
     VerificationPayload,
 )
 from ..utils import (
+    Precompile,
     cloid_to_uint128,
     encode_tif,
     format_price_for_api,
@@ -160,13 +160,6 @@ class HLProtocolEVM(HLProtocolBase):
         except (ValidationError, NetworkError):
             self.disconnect()
             raise
-        except Exception as exc:  # pragma: no cover - defensive
-            self.disconnect()
-            raise NetworkError(
-                "Failed to initialize HyperLiquid EVM connection",
-                endpoint=self.rpc_url,
-                details={"error": str(exc)},
-            ) from exc
 
     def disconnect(self) -> None:
         self._connections.disconnect()
@@ -208,19 +201,8 @@ class HLProtocolEVM(HLProtocolBase):
 
             return tx_request.response_class(**response_data)
 
-        except (ValidationError, NetworkError) as exc:
-            return tx_request.response_class(
-                success=False,
-                error=str(exc),
-                **{
-                    k: v
-                    for k, v in tx_request.response_fields.items()
-                    if k not in ["success", "error"]
-                },
-            )
-        except Exception as exc:
-            logger.exception(f"Unexpected {func_name} failure")
-            return tx_request.response_class(success=False, error=str(exc))
+        except (ValidationError, NetworkError):
+            raise
 
     # ------------------------------------------------------------------
     # Core actions
@@ -238,12 +220,8 @@ class HLProtocolEVM(HLProtocolBase):
         slippage: float = 0.05,
         cloid: str | None = None,
     ) -> Response:
-        try:
-            mid_price, bid_price, ask_price = self._market_price_context(asset)
-            limit_price = self._compute_slippage_price(asset, float(mid_price), is_buy, slippage)
-        except (NetworkError, ValidationError) as exc:
-            logger.error("Failed to compute market order price for %s: %s", asset, exc)
-            return Response(success=False, cloid=cloid, error=str(exc))
+        mid_price, bid_price, ask_price = self._market_price_context(asset)
+        limit_price = self._compute_slippage_price(asset, float(mid_price), is_buy, slippage)
 
         bid_str = f"{bid_price:.8f}" if bid_price is not None else "n/a"
         ask_str = f"{ask_price:.8f}" if ask_price is not None else "n/a"
@@ -283,11 +261,7 @@ class HLProtocolEVM(HLProtocolBase):
     ) -> Response:
         self._ensure_connected()
 
-        try:
-            position = self._fetch_user_position(asset)
-        except NetworkError as exc:
-            logger.error("Failed to fetch position state for %s: %s", asset, exc)
-            return Response(success=False, cloid=cloid, error=str(exc))
+        position = self._fetch_user_position(asset)
 
         if position is None:
             message = f"No open position found for asset {asset}"
@@ -326,12 +300,8 @@ class HLProtocolEVM(HLProtocolBase):
             error = ValidationError("Close size must be positive", field="size", value=target_size)
             return Response(success=False, cloid=cloid, error=str(error))
 
-        try:
-            mid_price = self.get_market_price(asset)
-            limit_price = self._compute_slippage_price(asset, mid_price, is_buy, slippage)
-        except (NetworkError, ValidationError) as exc:
-            logger.error("Failed to compute close order price for %s: %s", asset, exc)
-            return Response(success=False, cloid=cloid, error=str(exc))
+        mid_price = self.get_market_price(asset)
+        limit_price = self._compute_slippage_price(asset, mid_price, is_buy, slippage)
 
         return self.limit_order(
             asset=asset,
@@ -539,6 +509,74 @@ class HLProtocolEVM(HLProtocolBase):
         )
         return self._execute_transaction(tx_request, "usd_class_transfer_to_spot")
 
+    def deposit_token_to_core(
+        self,
+        token_address: str,
+        token_index: int,
+        amount: float,
+        verification_payload: VerificationPayload | None = None,
+    ) -> Response:
+        token_decimals = self._get_erc20_decimals(token_address)
+        amount_wei = to_uint64(amount, token_decimals)
+
+        context = {
+            "token": token_address,
+            "token_index": token_index,
+            "amount": amount_wei,
+        }
+
+        json_name = self._get_json_name_for_chain("hyperliquid")
+        payload = verification_payload or self._resolve_verification_payload(
+            "HyperliquidStrategy.depositTokenToCore(address,uint64,uint256,VerificationPayload)",
+            json_name,
+            context,
+        )
+
+        args = [token_address, token_index, amount_wei, payload.as_tuple()]
+
+        tx_request = TxRequest(
+            function="depositTokenToCore",
+            args=args,
+            action="deposit_token_to_core",
+            context=context,
+            response_class=Response,
+            response_fields={"amount": amount},
+        )
+        return self._execute_transaction(tx_request, "deposit_token_to_core")
+
+    def withdraw_token_to_evm(
+        self,
+        token_index: int,
+        amount: float,
+        verification_payload: VerificationPayload | None = None,
+    ) -> Response:
+        wei_decimals = self._get_token_wei_decimals(token_index)
+        amount_uint = to_uint64(amount, wei_decimals)
+
+        context = {
+            "token_index": token_index,
+            "amount": amount_uint,
+        }
+
+        json_name = self._get_json_name_for_chain("hyperliquid")
+        payload = verification_payload or self._resolve_verification_payload(
+            "HyperliquidStrategy.withdrawTokenToEvm(uint64,uint64,VerificationPayload)",
+            json_name,
+            context,
+        )
+
+        args = [token_index, amount_uint, payload.as_tuple()]
+
+        tx_request = TxRequest(
+            function="withdrawTokenToEvm",
+            args=args,
+            action="withdraw_token_to_evm",
+            context=context,
+            response_class=Response,
+            response_fields={"amount": amount, "token_index": token_index},
+        )
+        return self._execute_transaction(tx_request, "withdraw_token_to_evm")
+
     # ------------------------------------------------------------------
     # Market data helpers
     # ------------------------------------------------------------------
@@ -705,12 +743,6 @@ class HLProtocolEVM(HLProtocolBase):
             raise NetworkError(str(exc), endpoint=self.rpc_url, details=exc.details) from exc
         except NetworkError:
             pass
-        except Exception as exc:  # pragma: no cover - defensive
-            raise NetworkError(
-                "Unexpected failure resolving strategy subvault",
-                endpoint=self.rpc_url,
-                details={"error": str(exc)},
-            ) from exc
 
         try:
             return self.account.address
@@ -793,6 +825,40 @@ class HLProtocolEVM(HLProtocolBase):
             action=action,
             context=context,
         )
+
+    # ------------------------------------------------------------------
+    # Token helpers
+    # ------------------------------------------------------------------
+    def _get_erc20_decimals(self, token_address: str) -> int:
+        abi = [
+            {
+                "constant": True,
+                "inputs": [],
+                "name": "decimals",
+                "outputs": [{"name": "", "type": "uint8"}],
+                "type": "function",
+            }
+        ]
+
+        web3 = self._connections.hyperliquid_web3
+        contract = web3.eth.contract(address=Web3.to_checksum_address(token_address), abi=abi)
+
+        return contract.functions.decimals().call()
+
+    def _get_token_wei_decimals(self, token_index: int) -> int:
+        from ..utils.token_metadata import get_token_info
+
+        testnet = "testnet" in self._config.hl_rpc_url
+        tokens = get_token_info(testnet=testnet)
+
+        for token in tokens:
+            if token.get("index") == token_index:
+                wei_decimals = token.get("weiDecimals")
+                if wei_decimals is not None:
+                    return int(wei_decimals)
+
+        logger.warning(f"weiDecimals not found for token index {token_index}, defaulting to 8")
+        raise ValueError("Token index not found in metadata")
 
     # ------------------------------------------------------------------
     # Connection-backed properties

@@ -9,7 +9,7 @@ import eth_account
 from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 
-from ..exceptions import AuthenticationError, NetworkError
+from ..exceptions import NetworkError
 from .config import CoreClientConfig
 
 logger = logging.getLogger(__name__)
@@ -32,22 +32,16 @@ class CoreConnections:
     def connect(self) -> None:
         api_url = self._config.resolved_base_url()
 
-        try:
-            wallet = eth_account.Account.from_key(self._config.private_key)  # type: ignore[attr-defined]
-        except Exception as exc:  # pragma: no cover - defensive
-            raise AuthenticationError(f"Invalid private key: {exc}") from exc
+        wallet = eth_account.Account.from_key(self._config.private_key)  # type: ignore[attr-defined]
 
         account_address = self._account_address or cast(str, wallet.address)
 
-        try:
-            exchange = Exchange(
-                wallet=wallet,
-                base_url=api_url,
-                account_address=account_address,
-            )
-            info = Info(base_url=api_url, skip_ws=self._config.skip_ws)
-        except Exception as exc:  # pragma: no cover - defensive
-            raise NetworkError(f"Failed to connect to HyperLiquid: {exc}") from exc
+        exchange = Exchange(
+            wallet=wallet,
+            base_url=api_url,
+            account_address=account_address,
+        )
+        info = Info(base_url=api_url, skip_ws=self._config.skip_ws)
 
         self._wallet = wallet
         self._exchange = exchange

@@ -55,7 +55,7 @@ class ProofManager:
         blob = config.flexible_vault_proof_blob
         if blob is not None:
             blobs: Sequence[Mapping[str, Any]]
-            if isinstance(blob, Sequence) and not isinstance(blob, (str, bytes)):
+            if isinstance(blob, Sequence) and not isinstance(blob, str | bytes):
                 blobs = blob
             elif isinstance(blob, Mapping):
                 blobs = [blob]

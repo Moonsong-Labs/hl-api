@@ -21,9 +21,6 @@ class CoreClientConfig:
         if self.base_url:
             return self.base_url.rstrip("/")
 
-        try:
-            from hyperliquid.utils.constants import MAINNET_API_URL, TESTNET_API_URL
-        except Exception as exc:  # pragma: no cover - defensive
-            raise RuntimeError("hyperliquid-python-sdk is required to resolve API URLs") from exc
+        from hyperliquid.utils.constants import MAINNET_API_URL, TESTNET_API_URL
 
         return (TESTNET_API_URL if self.testnet else MAINNET_API_URL).rstrip("/")
