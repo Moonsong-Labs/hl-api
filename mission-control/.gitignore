@@ -1,0 +1,23 @@
+# binaries
+/bin/
+/dist/
+
+# build artifacts
+*.out
+*.test
+*.exe
+
+# local env
+.env
+.env.local
+
+# sqlite artifacts
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# editors
+.idea/
+.vscode/
+.DS_Store
